@@ -1,6 +1,7 @@
 import { SEED_PHONES } from '../../src/data/seedPhones';
 import type { ApiInventoryUnit, ApiProduct, ApiReservation, ApiSale } from '../../src/types';
 import type { PhoneItem } from '../../src/types';
+import { detectImageFormat } from '../../src/utils/imageFormat';
 
 interface D1Result<T = unknown> {
   results?: T[];
@@ -130,7 +131,7 @@ function makeInitialState(): DemoState {
       }[phone.condition] || phone.condition;
       return {
         id: phone.id,
-        category: phone.category || 'Phones',
+        category: phone.category,
         brand: phone.brand,
         model: phone.model,
         storage: phone.storage,
@@ -141,11 +142,11 @@ function makeInitialState(): DemoState {
         batteryHealth: phone.batteryHealth ?? null,
         priceInr: phone.price,
         originalMsp: phone.originalMsp ?? null,
-        billAvailable: phone.billAvailable ?? true,
+        billAvailable: phone.billAvailable ?? false,
         billAmount: phone.billAmount ?? null,
         priceDrop: phone.priceDrop ?? false,
         featured: phone.featured ?? false,
-        stockTag: phone.stockTag || `DEMO-${phone.id}`,
+        stockTag: phone.stockTag || `MBPC-${phone.id}`,
         screenSize: phone.screenSize || null,
         ram: phone.ram || null,
         processor: phone.processor || null,
@@ -160,7 +161,7 @@ function makeInitialState(): DemoState {
         units: [{
           id: unitId,
           productId: phone.id,
-          stockTag: phone.stockTag || `DEMO-${phone.id}`,
+          stockTag: phone.stockTag || `MBPC-${phone.id}`,
           status: statusToApi(phone.status),
           salePriceInr: phone.price,
           createdAt: now,
@@ -567,21 +568,20 @@ export async function onRequest(context: { request: Request; env: Env }): Promis
       const form = await request.formData();
       const file = form.get('image');
       if (!(file instanceof File)) return json({ error: 'No image file provided.' }, 400);
-      if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type)) {
-        return json({ error: 'Only JPEG, PNG, WebP, and GIF images are allowed.' }, 400);
+      if (file.size > (env.R2 ? 5 * 1024 * 1024 : 60 * 1024)) {
+        return json({ error: env.R2 ? 'File too large. Maximum 5MB.' : 'Uploads are limited to 60KB until R2 is configured.' }, 400);
       }
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const format = detectImageFormat(bytes);
+      if (!format) return json({ error: 'The uploaded file is not a supported image.' }, 400);
       if (env.R2) {
-        if (file.size > 5 * 1024 * 1024) return json({ error: 'File too large. Maximum 5MB.' }, 400);
-        const extension = file.type === 'image/jpeg' ? 'jpg' : file.type.split('/')[1];
-        const filename = `${crypto.randomUUID()}.${extension}`;
-        await env.R2.put(filename, file.stream(), { httpMetadata: { contentType: file.type } });
+        const filename = `${crypto.randomUUID()}.${format.extension}`;
+        await env.R2.put(filename, bytes, { httpMetadata: { contentType: format.mimeType } });
         return json({ url: `/api/uploads/file/${filename}`, filename, size: file.size });
       }
-      if (file.size > 60 * 1024) return json({ error: 'Demo uploads are limited to 60KB until R2 is configured.' }, 400);
-      const bytes = new Uint8Array(await file.arrayBuffer());
       let binary = '';
       for (const byte of bytes) binary += String.fromCharCode(byte);
-      const dataUrl = `data:${file.type};base64,${btoa(binary)}`;
+      const dataUrl = `data:${format.mimeType};base64,${btoa(binary)}`;
       return json({ url: dataUrl, filename: `demo-${crypto.randomUUID()}`, size: file.size });
     }
 

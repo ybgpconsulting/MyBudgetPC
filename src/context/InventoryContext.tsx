@@ -38,7 +38,7 @@ const DEFAULT_FILTERS: FilterOptions = {
   category: 'All',
   brand: 'All',
   minPrice: 0,
-  maxPrice: 250000,
+  maxPrice: Number.MAX_SAFE_INTEGER,
   storage: [],
   condition: [],
   minBatteryHealth: 0,
@@ -92,7 +92,7 @@ function mapApiProductToPhoneItem(apiProduct: ApiProduct): PhoneItem {
   return {
     id: apiProduct.id,
     inventoryUnitId: unit?.id,
-    category: (apiProduct.category || 'Phones') as ProductCategory,
+    category: (apiProduct.category || 'Computer equipment') as ProductCategory,
     brand: apiProduct.brand,
     model: apiProduct.model,
     storage: apiProduct.storage,
@@ -110,12 +110,12 @@ function mapApiProductToPhoneItem(apiProduct: ApiProduct): PhoneItem {
     status: statusMap[unit?.status || 'available'] || 'Available',
     availableQuantity: apiProduct.units?.filter(candidate => candidate.status === 'available').length || 0,
     dateAdded: apiProduct.dateAdded || new Date().toISOString().split('T')[0],
-    images: images.length > 0 ? images : ['/placeholder-phone.png'],
+    images: images.length > 0 ? images : ['/product-placeholder.svg'],
     inBox: {
-      chargerIncluded: inBox.charger_included ?? inBox.chargerIncluded ?? true,
-      originalBox: inBox.original_box ?? inBox.originalBox ?? true,
-      taxInvoiceProvided: inBox.tax_invoice_provided ?? inBox.taxInvoiceProvided ?? true,
-      cableIncluded: inBox.cable_included ?? inBox.cableIncluded ?? true,
+      chargerIncluded: inBox.charger_included ?? inBox.chargerIncluded ?? false,
+      originalBox: inBox.original_box ?? inBox.originalBox ?? false,
+      taxInvoiceProvided: inBox.tax_invoice_provided ?? inBox.taxInvoiceProvided ?? false,
+      cableIncluded: inBox.cable_included ?? inBox.cableIncluded ?? false,
       originalBillIncluded: inBox.original_bill_included ?? inBox.originalBillIncluded,
       warrantyApplicable: inBox.warranty_applicable ?? inBox.warrantyApplicable ?? false,
     },
@@ -130,7 +130,7 @@ function mapApiProductToPhoneItem(apiProduct: ApiProduct): PhoneItem {
 
 function mapPhoneItemToApiPayload(phone: Omit<PhoneItem, 'id' | 'dateAdded'>) {
   const payload: Record<string, unknown> = {
-    category: phone.category || 'Phones',
+    category: phone.category || 'Computer equipment',
     brand: phone.brand,
     model: phone.model,
     storage: phone.storage,
@@ -138,7 +138,7 @@ function mapPhoneItemToApiPayload(phone: Omit<PhoneItem, 'id' | 'dateAdded'>) {
     colorHex: phone.colorHex || undefined,
     priceInr: phone.price,
     originalMsp: phone.originalMsp || undefined,
-    billAvailable: phone.billAvailable ?? true,
+    billAvailable: phone.billAvailable ?? false,
     billAmount: phone.billAmount || undefined,
     conditionGrade: phone.condition,
     conditionDescription: phone.conditionDescription,

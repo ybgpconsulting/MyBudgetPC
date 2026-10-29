@@ -136,10 +136,15 @@ export const Storefront: React.FC = () => {
       ).sort((a, b) => a.localeCompare(b)),
     ];
   }, [phones]);
+  const brands = useMemo(() => Array.from(new Set<string>(phones
+    .map((product) => product.brand)
+    .filter((brand): brand is string => typeof brand === 'string' && brand.length > 0)))
+    .sort((a, b) => a.localeCompare(b)), [phones]);
 
   const visibleProducts = useMemo(() => filterProducts(phones, {
     query: filters.searchQuery,
     category: filters.category,
+    brand: filters.brand,
     minPrice: filters.minPrice,
     maxPrice: filters.maxPrice,
     sortBy: filters.sortBy,
@@ -199,9 +204,23 @@ export const Storefront: React.FC = () => {
       : line));
   };
 
-  const updateFilter = (key: 'searchQuery' | 'category' | 'minPrice' | 'maxPrice' | 'sortBy' | 'onlyAvailable', value: string | number | boolean) => {
+  const updateFilter = (key: 'searchQuery' | 'category' | 'brand' | 'minPrice' | 'maxPrice' | 'sortBy' | 'onlyAvailable', value: string | number | boolean) => {
     setFilters((previous) => ({ ...previous, [key]: value }));
   };
+  const clearCatalogFilters = () => setFilters((previous) => ({
+    ...previous,
+    searchQuery: '',
+    category: 'All',
+    brand: 'All',
+    minPrice: 0,
+    maxPrice: Number.MAX_SAFE_INTEGER,
+    onlyAvailable: false,
+  }));
+  const activeFilterCount = Number(filters.category !== 'All')
+    + Number(filters.brand !== 'All')
+    + Number(filters.minPrice > 0)
+    + Number(filters.maxPrice < Number.MAX_SAFE_INTEGER)
+    + Number(filters.onlyAvailable);
 
   const productWhatsAppUrl = (product: PhoneItem, quantity = 1) => createWhatsAppUrl(
     buildProductEnquiryMessage(
@@ -296,6 +315,28 @@ export const Storefront: React.FC = () => {
           <ChevronDown size={15} aria-hidden="true" />
         </label>
       </section>
+      <section className="mbpc-catalog-filter-row" aria-label="Additional catalogue filters">
+        <label className="mbpc-filter-label">
+          Brand
+          <select value={filters.brand} onChange={(event) => updateFilter('brand', event.target.value)}>
+            <option value="All">All brands</option>
+            {brands.map((brand) => <option key={brand} value={brand}>{brand}</option>)}
+          </select>
+        </label>
+        <label className="mbpc-filter-label">
+          Minimum price
+          <input type="number" min="0" step="1" value={filters.minPrice || ''} onChange={(event) => updateFilter('minPrice', Number(event.target.value) || 0)} />
+        </label>
+        <label className="mbpc-filter-label">
+          Maximum price
+          <input type="number" min="0" step="1" value={filters.maxPrice === Number.MAX_SAFE_INTEGER ? '' : filters.maxPrice} placeholder="No limit" onChange={(event) => updateFilter('maxPrice', Number(event.target.value) || Number.MAX_SAFE_INTEGER)} />
+        </label>
+        <label className="mbpc-checkbox mbpc-desktop-availability"><input type="checkbox" checked={filters.onlyAvailable} onChange={(event) => updateFilter('onlyAvailable', event.target.checked)} />Available only</label>
+        {activeFilterCount > 0 && <button type="button" className="mbpc-text-link mbpc-clear-filters" onClick={clearCatalogFilters}>Clear filters ({activeFilterCount})</button>}
+      </section>
+      <p className="mbpc-result-count" aria-live="polite">
+        {loading ? 'Loading products…' : `${visibleProducts.length} ${visibleProducts.length === 1 ? 'product' : 'products'}${filters.searchQuery ? ` matching “${filters.searchQuery}”` : ''}`}
+      </p>
       <div className="mbpc-category-pills" aria-label="Filter by category">
         <button type="button" className={filters.category === 'All' ? 'is-selected' : ''} onClick={() => updateFilter('category', 'All')}>All products</button>
         {categories.map((category) => (
@@ -304,9 +345,14 @@ export const Storefront: React.FC = () => {
       </div>
       {visibleProducts.length > 0
         ? <section className="mbpc-product-grid" aria-live="polite">{productCards(visibleProducts)}</section>
-        : <EmptyState loading={loading} apiError={apiError} onRetry={refreshPhones} onClear={() => {
-          setFilters((previous) => ({ ...previous, searchQuery: '', category: 'All', minPrice: 0, maxPrice: 250000 }));
-        }} />}
+        : apiError || loading
+          ? <EmptyState loading={loading} apiError={apiError} onRetry={refreshPhones} onClear={() => navigateCatalog()} />
+          : <section className="mbpc-empty-state" aria-live="polite">
+            <Search size={38} aria-hidden="true" />
+            <h2>No matching products</h2>
+            <p>Try changing your search or filters to see more listings.</p>
+            <button type="button" className="mbpc-button mbpc-button-secondary" onClick={clearCatalogFilters}>Clear search and filters</button>
+          </section>}
     </>
   );
 
@@ -609,8 +655,10 @@ export const Storefront: React.FC = () => {
           <section className="mbpc-filter-sheet" role="dialog" aria-modal="true" aria-labelledby="filter-title">
             <div className="mbpc-drawer-header"><h2 id="filter-title">Filters</h2><button type="button" className="mbpc-icon-button" onClick={() => setFilterOpen(false)} aria-label="Close filters"><X size={20} /></button></div>
             <label className="mbpc-filter-label">Category<select value={filters.category} onChange={(event) => updateFilter('category', event.target.value)}><option value="All">All categories</option>{categories.map((category) => <option key={category}>{category}</option>)}</select></label>
-            <div className="mbpc-price-filters"><label className="mbpc-filter-label">Minimum price<input type="number" min="0" value={filters.minPrice || ''} onChange={(event) => updateFilter('minPrice', Number(event.target.value) || 0)} /></label><label className="mbpc-filter-label">Maximum price<input type="number" min="0" value={filters.maxPrice === 250000 ? '' : filters.maxPrice} placeholder="No limit" onChange={(event) => updateFilter('maxPrice', Number(event.target.value) || 250000)} /></label></div>
+            <label className="mbpc-filter-label">Brand<select value={filters.brand} onChange={(event) => updateFilter('brand', event.target.value)}><option value="All">All brands</option>{brands.map((brand) => <option key={brand} value={brand}>{brand}</option>)}</select></label>
+            <div className="mbpc-price-filters"><label className="mbpc-filter-label">Minimum price<input type="number" min="0" step="1" value={filters.minPrice || ''} onChange={(event) => updateFilter('minPrice', Number(event.target.value) || 0)} /></label><label className="mbpc-filter-label">Maximum price<input type="number" min="0" step="1" value={filters.maxPrice === Number.MAX_SAFE_INTEGER ? '' : filters.maxPrice} placeholder="No limit" onChange={(event) => updateFilter('maxPrice', Number(event.target.value) || Number.MAX_SAFE_INTEGER)} /></label></div>
             <label className="mbpc-checkbox"><input type="checkbox" checked={filters.onlyAvailable} onChange={(event) => updateFilter('onlyAvailable', event.target.checked)} />Show currently available only</label>
+            {activeFilterCount > 0 && <button type="button" className="mbpc-text-link" onClick={clearCatalogFilters}>Clear filters ({activeFilterCount})</button>}
             <button type="button" className="mbpc-button mbpc-button-primary mbpc-review-button" onClick={() => setFilterOpen(false)}>Show products <ArrowRight size={16} /></button>
           </section>
         </div>

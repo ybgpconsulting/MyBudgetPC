@@ -1,5 +1,4 @@
 import React, { useRef, useState } from 'react';
-import * as XLSX from 'xlsx';
 import { 
   Plus, 
   Trash2, 
@@ -28,6 +27,7 @@ import { formatINR } from '../../config/siteConfig';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../api/client';
 import { CustomerDetailsModal } from '../common/CustomerDetailsModal';
+import { readBulkStockRows } from '../../utils/bulkStockImport';
 
 const PRESET_BRANDS = [
   'Acer', 'AMD', 'Apple', 'ASUS', 'Corsair', 'Dell', 'Gigabyte', 'HP',
@@ -380,17 +380,22 @@ export const AdminDashboard: React.FC = () => {
     const errors: string[] = [];
     let imported = 0;
     try {
-      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
+      const rows = await readBulkStockRows(file);
       for (let index = 0; index < rows.length; index += 1) {
         const row = rows[index];
         const rowNumber = index + 2;
+        const category = String(row.Category || '').trim();
         const model = String(row.Model || '').trim();
         const brand = String(row.Brand || '').trim();
-        const price = Number(row.Price);
-        if (!brand || !model || !Number.isFinite(price) || price < 0) {
-          errors.push(`Row ${rowNumber}: Brand, Model, and a valid Price are required.`);
+        const condition = normalizeCondition(String(row.Condition || '') as ConditionGrade);
+        const priceValue = String(row.Price ?? '').trim();
+        const price = Number(priceValue);
+        if (!category || !brand || !model || !priceValue || !Number.isFinite(price) || price < 0) {
+          errors.push(`Row ${rowNumber}: Category, Brand, Model, and a valid Price are required.`);
+          continue;
+        }
+        if (!['A+', 'A', 'B', 'C'].includes(condition)) {
+          errors.push(`Row ${rowNumber}: Condition must be A+, A, B, or C.`);
           continue;
         }
         const battery = row.BatteryHealth === '' || row.BatteryHealth === undefined ? undefined : Number(row.BatteryHealth);
@@ -402,16 +407,16 @@ export const AdminDashboard: React.FC = () => {
         const additionalImageUrl = String(row.AdditionalImageUrl || '').trim();
         try {
           await addPhone({
-            category: String(row.Category || 'Laptops'),
+            category,
             brand,
             model,
             storage: String(row.Storage || 'N/A'),
             colour: String(row.Colour || ''),
-            condition: (String(row.Condition || 'A+') as ConditionGrade),
+            condition,
             conditionDescription: String(row.ConditionDescription || ''),
             batteryHealth: battery,
             price,
-            originalMsp: row.OriginalMsp === '' ? undefined : Number(row.OriginalMsp),
+            originalMsp: row.OriginalMsp === '' || row.OriginalMsp === undefined ? undefined : Number(row.OriginalMsp),
             billAvailable: parseBoolean(row.BillAvailable),
             billAmount: row.BillAmount === '' ? undefined : Number(row.BillAmount),
             featured: parseBoolean(row.Featured),
@@ -425,7 +430,7 @@ export const AdminDashboard: React.FC = () => {
               originalBox: parseBoolean(row.OriginalBox),
               chargerIncluded: parseBoolean(row.ChargerIncluded),
               cableIncluded: parseBoolean(row.CableIncluded),
-              taxInvoiceProvided: parseBoolean(row.BillAvailable),
+              taxInvoiceProvided: parseBoolean(row.TaxInvoiceProvided),
               warrantyApplicable: parseBoolean(row.WarrantyApplicable),
             },
             keyFeatures: [],
@@ -439,7 +444,7 @@ export const AdminDashboard: React.FC = () => {
       setBulkResult({ imported, errors });
       if (imported > 0) showToast(`Imported ${imported} stock item${imported === 1 ? '' : 's'} successfully`);
     } catch (error) {
-      setBulkResult({ imported: 0, errors: [error instanceof Error ? error.message : 'Could not read this spreadsheet.'] });
+      setBulkResult({ imported: 0, errors: [error instanceof Error ? error.message : 'Could not read this file.'] });
     } finally {
       setBulkBusy(false);
     }
@@ -493,7 +498,7 @@ export const AdminDashboard: React.FC = () => {
               className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-2 shadow-xs transition-all cursor-pointer"
             >
               <FileSpreadsheet className="w-4 h-4" />
-              <span>Bulk Excel Upload</span>
+              <span>Bulk catalog import</span>
             </button>
 
             <button
@@ -794,18 +799,18 @@ export const AdminDashboard: React.FC = () => {
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2"><FileSpreadsheet className="w-5 h-5 text-blue-600" />Bulk stock upload</h3>
-                  <p className="text-xs text-slate-500 mt-1">Upload .xlsx, .xls, or .csv. Each valid row becomes one live stock item.</p>
+                  <p className="text-xs text-slate-500 mt-1">Upload .xlsx or .csv (up to 10MB and 1,000 products). Each valid row becomes one live stock item.</p>
                 </div>
                 <button onClick={() => setShowBulkModal(false)} className="p-1.5 rounded-full bg-slate-100 text-slate-500 hover:text-slate-800 cursor-pointer" aria-label="Close bulk upload"><X className="w-5 h-5" /></button>
               </div>
               <div className="p-4 rounded-2xl bg-blue-50 border border-blue-200 space-y-2">
                 <p className="text-xs font-bold text-blue-900">Use the supplied template columns</p>
-                <p className="text-[11px] text-blue-800">Required: Brand, Model, Price. Add ImageUrl and AdditionalImageUrl for product photos. BatteryHealth may be blank.</p>
-                <button onClick={downloadBulkTemplate} className="text-xs font-bold text-blue-700 underline cursor-pointer">Download Excel template</button>
+                <p className="text-[11px] text-blue-800">Required: Category, Brand, Model, Condition, Price. Add ImageUrl and AdditionalImageUrl for product photos. BatteryHealth may be blank.</p>
+                <button onClick={downloadBulkTemplate} className="text-xs font-bold text-blue-700 underline cursor-pointer">Download CSV template</button>
               </div>
-              <input ref={bulkFileRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleBulkImport} className="hidden" />
+              <input ref={bulkFileRef} type="file" accept=".xlsx,.csv" onChange={handleBulkImport} className="hidden" />
               <button disabled={bulkBusy} onClick={() => bulkFileRef.current?.click()} className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-bold flex items-center justify-center gap-2 cursor-pointer disabled:cursor-wait">
-                <Upload className="w-4 h-4" />{bulkBusy ? 'Importing live stock...' : 'Choose Excel file'}
+                <Upload className="w-4 h-4" />{bulkBusy ? 'Importing live stock...' : 'Choose .xlsx or .csv file'}
               </button>
               {bulkResult && <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2"><p className="text-sm font-bold text-emerald-700">Imported: {bulkResult.imported}</p>{bulkResult.errors.length > 0 && <div className="text-xs text-red-700 space-y-1 max-h-32 overflow-y-auto">{bulkResult.errors.map(error => <p key={error}>{error}</p>)}</div>}</div>}
             </div>

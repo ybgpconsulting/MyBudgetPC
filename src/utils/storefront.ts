@@ -31,6 +31,7 @@ export function filterProducts(
   options: {
     query: string;
     category: string;
+    brand: string;
     minPrice: number;
     maxPrice: number;
     sortBy: string;
@@ -48,8 +49,10 @@ export function filterProducts(
           && /component|processor|cpu|graphics|motherboard|memory|ram|storage|power supply|psu|cooling/.test(category);
         if (!isDesktop && !isComponent && category !== selected) return false;
       }
+      if (options.brand !== 'All' && product.brand !== options.brand) return false;
       if (options.onlyAvailable && product.status !== 'Available') return false;
-      if (product.price > 0 && (product.price < options.minPrice || product.price > options.maxPrice)) return false;
+      const hasPriceLimit = options.minPrice > 0 || options.maxPrice < Number.MAX_SAFE_INTEGER;
+      if (hasPriceLimit && (product.price <= 0 || product.price < options.minPrice || product.price > options.maxPrice)) return false;
       if (query) {
         const searchable = [
           product.brand,
@@ -58,9 +61,13 @@ export function filterProducts(
           product.storage,
           product.ram,
           product.processor,
+          product.screenSize,
+          product.condition,
+          product.conditionDescription,
+          product.colour,
           product.stockTag,
           product.keyFeatures.join(' '),
-        ].join(' ').toLocaleLowerCase();
+        ].filter(Boolean).join(' ').toLocaleLowerCase();
         if (!searchable.includes(query)) return false;
       }
       return true;

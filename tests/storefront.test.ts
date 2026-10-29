@@ -40,6 +40,14 @@ function makeProduct(overrides: Partial<PhoneItem> = {}): PhoneItem {
 
 test('catalogue search, component category, availability, and price sorting work', () => {
   const laptop = makeProduct();
+  const premiumDesktop = makeProduct({
+    id: 'desktop-1',
+    brand: 'Second',
+    category: 'Desktop Computers',
+    model: 'Tower workstation',
+    price: 325000,
+    stockTag: 'MBPC-DES-001',
+  });
   const graphicsCard = makeProduct({
     id: 'gpu-1',
     category: 'Graphics Cards',
@@ -53,27 +61,48 @@ test('catalogue search, component category, availability, and price sorting work
   assert.deepEqual(filterProducts([laptop, graphicsCard, unpriced], {
     query: 'mbpc-gpu',
     category: 'All',
+    brand: 'All',
     minPrice: 0,
-    maxPrice: 250000,
+    maxPrice: Number.MAX_SAFE_INTEGER,
     sortBy: 'featured',
     onlyAvailable: false,
   }).map((product) => product.id), ['gpu-1']);
   assert.deepEqual(filterProducts([laptop, graphicsCard, unpriced], {
     query: '',
     category: 'Components',
+    brand: 'All',
     minPrice: 0,
-    maxPrice: 250000,
+    maxPrice: Number.MAX_SAFE_INTEGER,
     sortBy: 'featured',
     onlyAvailable: false,
   }).map((product) => product.id), ['gpu-1', 'memory-1']);
   assert.deepEqual(filterProducts([unpriced, graphicsCard, laptop], {
     query: '',
     category: 'All',
+    brand: 'All',
     minPrice: 0,
-    maxPrice: 250000,
+    maxPrice: Number.MAX_SAFE_INTEGER,
     sortBy: 'price-asc',
     onlyAvailable: true,
   }).map((product) => product.id), ['laptop-1', 'gpu-1', 'memory-1']);
+  assert.deepEqual(filterProducts([laptop, graphicsCard, premiumDesktop], {
+    query: '',
+    category: 'All',
+    brand: 'Second',
+    minPrice: 300000,
+    maxPrice: Number.MAX_SAFE_INTEGER,
+    sortBy: 'price-asc',
+    onlyAvailable: false,
+  }).map((product) => product.id), ['desktop-1']);
+  assert.deepEqual(filterProducts([laptop, premiumDesktop], {
+    query: 'workstation',
+    category: 'All',
+    brand: 'All',
+    minPrice: 0,
+    maxPrice: Number.MAX_SAFE_INTEGER,
+    sortBy: 'newest',
+    onlyAvailable: false,
+  }).map((product) => product.id), ['desktop-1']);
 });
 
 test('cart totals follow current product prices and report pending amounts', () => {

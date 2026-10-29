@@ -50,12 +50,12 @@ await withTransaction(async (client) => {
        ON CONFLICT (stock_tag) DO NOTHING
        RETURNING id`,
       [
-        phone.category || 'Phones', phone.brand, phone.model, phone.storage,
+        phone.category, phone.brand, phone.model, phone.storage,
         phone.colour, phone.colorHex || null, phone.price, phone.originalMsp || null,
         phone.billAvailable ?? false, phone.billAmount || null,
         phone.condition, phone.conditionDescription, phone.batteryHealth || null,
         phone.screenSize || null, phone.ram || null, phone.processor || null,
-        phone.stockTag || phone.id, phone.priceDrop ?? false, phone.featured ?? false,
+        phone.stockTag || `MBPC-${phone.id}`, phone.priceDrop ?? false, phone.featured ?? false,
         JSON.stringify(phone.inBox), phone.keyFeatures || [],
       ]
     );
@@ -64,7 +64,7 @@ await withTransaction(async (client) => {
       const productId = productRows[0].id;
 
       // Create inventory unit
-      const unitTag = `${phone.stockTag || phone.id}-U1`;
+      const unitTag = `${phone.stockTag || `MBPC-${phone.id}`}-U1`;
       const statusMap: Record<string, string> = { Available: 'available', Booked: 'reserved', 'Sold Out': 'sold' };
       await client.query(
         `INSERT INTO inventory_units (product_id, stock_tag, status, sale_price_inr)
