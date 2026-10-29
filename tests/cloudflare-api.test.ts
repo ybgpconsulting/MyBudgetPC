@@ -5,14 +5,20 @@ import { onRequest } from '../functions/api/[[path]]';
 class MemoryD1 {
   private row: { revision: number; value: string } | null = null;
 
+  constructor(private readonly queryError?: (query: string) => Error | undefined) {}
+
   prepare(query: string) {
     const createStatement = (values: unknown[] = []) => ({
       bind: (...bound: unknown[]) => createStatement(bound),
       first: async <T,>() => {
+        const error = this.queryError?.(query);
+        if (error) throw error;
         if (query.includes('SELECT 1')) return { ok: 1 } as T;
         return this.row as T | null;
       },
       run: async <T,>() => {
+        const error = this.queryError?.(query);
+        if (error) throw error;
         if (query.startsWith('INSERT OR IGNORE') && !this.row) {
           this.row = { revision: 0, value: String(values[0]) };
           return { success: true, meta: { changes: 1 } };
@@ -96,9 +102,22 @@ test('Pages API rejects invalid optional tokens and protects inventory-unit deta
   assert.equal(createResponse.status, 201);
   const created = await createResponse.json() as { id: string };
 
-  const publicList = await call(db, '/api/products');
-  const publicCatalog = await publicList.json() as { products: Array<{ units: Array<Record<string, unknown>> }> };
+  const publicList = await call(db, '/api/products?page=1&limit=1');
+  assert.equal(publicList.status, 200);
+  const publicCatalog = await publicList.json() as {
+    products: Array<{ units: Array<Record<string, unknown>> }>;
+    total: number;
+    page: number;
+    limit: number;
+    pages: number;
+  };
+  assert.equal(publicCatalog.total, 1);
+  assert.equal(publicCatalog.page, 1);
+  assert.equal(publicCatalog.limit, 1);
+  assert.equal(publicCatalog.pages, 1);
   assert.deepEqual(publicCatalog.products[0].units, [{ status: 'available', salePriceInr: 50000 }]);
+  assert.equal('id' in publicCatalog.products[0].units[0], false);
+  assert.equal('stockTag' in publicCatalog.products[0].units[0], false);
 
   const publicDetail = await call(db, `/api/products/${created.id}`);
   const publicProduct = await publicDetail.json() as { units: Array<Record<string, unknown>> };
@@ -160,10 +179,20 @@ test('Cloudflare image uploads fail closed for unauthorized and unprocessable fi
 
 test('Pages API starts with an empty My Budget PC catalogue', async () => {
   const db = new MemoryD1();
-  const response = await call(db, '/api/products');
+  const response = await call(db, '/api/products?page=1&limit=1');
   assert.equal(response.status, 200);
-  const catalog = await response.json() as { products: unknown[]; total: number };
+  const catalog = await response.json() as {
+    products: unknown[];
+    total: number;
+    page: number;
+    limit: number;
+    pages: number;
+  };
+  assert.deepEqual(catalog.products, []);
   assert.equal(catalog.total, 0);
+  assert.equal(catalog.page, 1);
+  assert.equal(catalog.limit, 1);
+  assert.equal(catalog.pages, 0);
   assert.deepEqual(catalog.products, []);
 });
 
@@ -302,5 +331,51 @@ test('Pages API reports when its independent D1 binding is missing', async () =>
     request: makeRequest('/api/health'),
     env: {},
   });
+  assert.match(response.headers.get('content-type') || '', /^application\/json/);
   assert.equal(response.status, 503);
+  const body = await response.json() as { error: string };
+  assert.match(body.error, /D1 database is not configured/);
+});
+
+test('Pages API health verifies connectivity through a configured D1 binding', async () => {
+  const response = await call(new MemoryD1(), '/api/health');
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    status: 'ok',
+    mode: 'd1',
+    database: 'connected',
+    imageStorage: 'disabled',
+  });
+});
+
+test('Pages API reports missing D1 tables without exposing database errors', async () => {
+  const privateError = 'D1_ERROR: no such table: my_budget_pc_state; secret=must-not-leak';
+  const db = new MemoryD1((query) => query.includes('my_budget_pc_state')
+    ? new Error(privateError)
+    : undefined);
+
+  const response = await call(db, '/api/products');
+  const body = await response.json() as { error: string };
+
+  assert.equal(response.status, 503);
+  assert.match(body.error, /schema is not initialized/);
+  assert.match(body.error, /my_budget_pc_state/);
+  assert.equal(JSON.stringify(body).includes('must-not-leak'), false);
+  assert.equal(JSON.stringify(body).includes(privateError), false);
+});
+
+test('Pages API reports D1 SQL failures without exposing database errors', async () => {
+  const privateError = 'D1_ERROR: SELECT failed; secret=must-not-leak';
+  const db = new MemoryD1((query) => query.includes('SELECT revision')
+    ? new Error(privateError)
+    : undefined);
+
+  const response = await call(db, '/api/products');
+  const body = await response.json() as { error: string };
+
+  assert.equal(response.status, 503);
+  assert.match(body.error, /D1 is unavailable/);
+  assert.equal(JSON.stringify(body).includes('must-not-leak'), false);
+  assert.equal(JSON.stringify(body).includes(privateError), false);
 });

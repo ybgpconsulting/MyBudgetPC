@@ -285,7 +285,7 @@ function serializePublicProduct(product: ApiProduct) {
 
 export async function onRequest(context: { request: Request; env: Env }): Promise<Response> {
   const { request, env } = context;
-  if (!env.DB) return json({ error: 'Cloudflare D1 database is not configured. Bind a new store database as DB.' }, 503);
+  if (!env.DB) return json({ error: 'Cloudflare D1 database is not configured. Configure the DB binding for this Worker.' }, 503);
   const url = new URL(request.url);
   const path = url.pathname.replace(/^\/api/, '').replace(/\/+$/, '') || '/';
   const method = request.method.toUpperCase();
@@ -655,7 +655,14 @@ export async function onRequest(context: { request: Request; env: Env }): Promis
 
     return json({ error: 'Not found.' }, 404);
   } catch (error) {
-    console.error('Cloudflare API error:', error);
+    const isD1Error = error instanceof Error
+      && /D1_ERROR|SQLITE_ERROR|no such table|database is locked/i.test(error.message);
+    console.error('Cloudflare API error:', isD1Error ? 'D1 operation failed.' : error);
+    if (isD1Error) {
+      return json({
+        error: 'Cloudflare D1 is unavailable or its schema is not initialized. Verify the DB binding and my_budget_pc_state table.',
+      }, 503);
+    }
     return json({ error: 'Store API request failed. Please retry.' }, 500);
   }
 }
