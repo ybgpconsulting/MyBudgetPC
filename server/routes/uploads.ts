@@ -6,16 +6,17 @@ import { randomUUID } from 'node:crypto';
 import { authenticate, authorize } from '../middleware/authenticate';
 import { createAuditLog } from '../middleware/audit';
 import { detectImageFormat } from '../../src/utils/imageFormat';
-import { normalizeImageToWebp } from '../imageProcessing';
+import { getMaxImageUploadSize, MAX_IMAGE_FILE_SIZE, normalizeImageToWebp } from '../imageProcessing';
 
 const router = Router();
 
 const uploadDir = process.env.UPLOAD_DIR || './uploads';
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
+const maxFileSize = getMaxImageUploadSize();
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: Number(process.env.MAX_FILE_SIZE || 5 * 1024 * 1024) },
+  limits: { fileSize: maxFileSize },
 });
 
 // POST /api/uploads/image
@@ -24,7 +25,11 @@ router.post('/image', authenticate, authorize('admin', 'sales'), (req: Request, 
     if (err) {
       if (err instanceof multer.MulterError) {
         if (err.code === 'LIMIT_FILE_SIZE') {
-          return res.status(400).json({ error: 'File too large. Maximum 5MB.' });
+          return res.status(400).json({
+            error: maxFileSize === MAX_IMAGE_FILE_SIZE
+              ? 'File too large. Maximum 5MB.'
+              : 'File exceeds the configured image upload limit.',
+          });
         }
         return res.status(400).json({ error: err.message });
       }

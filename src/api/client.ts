@@ -1,4 +1,9 @@
-const API_BASE = import.meta.env?.VITE_API_URL || '';
+const API_BASE = import.meta.env?.VITE_API_URL?.trim().replace(/\/+$/, '') || '';
+
+export function resolveImageUrl(url: string, apiBase = API_BASE): string {
+  if (!apiBase || !/^\/(?:uploads|api\/uploads)\//.test(url)) return url;
+  return new URL(url, apiBase).toString();
+}
 
 class ApiClient {
   private token: string | null = null;

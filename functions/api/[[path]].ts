@@ -1,7 +1,6 @@
 import { SEED_PHONES } from '../../src/data/seedPhones';
 import type { ApiInventoryUnit, ApiProduct, ApiReservation, ApiSale } from '../../src/types';
 import type { PhoneItem } from '../../src/types';
-import { detectImageFormat } from '../../src/utils/imageFormat';
 
 interface D1Result<T = unknown> {
   results?: T[];
@@ -15,19 +14,18 @@ interface D1Statement {
   run<T = unknown>(): Promise<D1Result<T>>;
 }
 
-interface DemoDatabase {
+interface StoreDatabase {
   prepare(query: string): D1Statement;
 }
 
-interface DemoBucket {
+interface StoreBucket {
   get(key: string): Promise<{ body: ReadableStream; httpMetadata?: { contentType?: string } } | null>;
-  put(key: string, value: ReadableStream | ArrayBuffer, options?: { httpMetadata?: { contentType?: string } }): Promise<unknown>;
   delete(key: string): Promise<void>;
 }
 
 interface Env {
-  DB?: DemoDatabase;
-  R2?: DemoBucket;
+  DB?: StoreDatabase;
+  R2?: StoreBucket;
   MBPC_AUTH_SECRET?: string;
   MBPC_ADMIN_EMAIL?: string;
   MBPC_ADMIN_PASSWORD?: string;
@@ -35,7 +33,7 @@ interface Env {
   MBPC_SALES_PASSWORD?: string;
 }
 
-interface DemoState {
+interface StoreState {
   products: ApiProduct[];
   reservations: ApiReservation[];
   sales: ApiSale[];
@@ -118,7 +116,7 @@ function statusToApi(status: PhoneItem['status']): ApiInventoryUnit['status'] {
   return 'available';
 }
 
-function makeInitialState(): DemoState {
+function makeInitialState(): StoreState {
   const now = isoNow();
   return {
     products: SEED_PHONES.map((phone) => {
@@ -178,17 +176,17 @@ function makeInitialState(): DemoState {
   };
 }
 
-async function readState(db: DemoDatabase): Promise<StoredState> {
+async function readState(db: StoreDatabase): Promise<StoredState> {
   const stored = await db.prepare('SELECT revision, value FROM my_budget_pc_state WHERE id = 1').first<StoredState>();
   if (stored) return stored;
   const initial = JSON.stringify(makeInitialState());
   await db.prepare('INSERT OR IGNORE INTO my_budget_pc_state (id, revision, value) VALUES (1, 0, ?)').bind(initial).run();
   const created = await db.prepare('SELECT revision, value FROM my_budget_pc_state WHERE id = 1').first<StoredState>();
-  if (!created) throw new Error('Unable to initialize the demo database.');
+  if (!created) throw new Error('Unable to initialize the My Budget PC database.');
   return created;
 }
 
-async function saveState(db: DemoDatabase, current: StoredState, state: DemoState): Promise<boolean> {
+async function saveState(db: StoreDatabase, current: StoredState, state: StoreState): Promise<boolean> {
   const result = await db.prepare(
     'UPDATE my_budget_pc_state SET revision = revision + 1, value = ? WHERE id = 1 AND revision = ?',
   ).bind(JSON.stringify(state), current.revision).run();
@@ -251,6 +249,40 @@ function productMatches(product: ApiProduct, query: URLSearchParams) {
     && (!search || [product.brand, product.model, product.stockTag, product.colour].some(value => value.toLowerCase().includes(search)));
 }
 
+function serializePublicProduct(product: ApiProduct) {
+  return {
+    id: product.id,
+    category: product.category,
+    brand: product.brand,
+    model: product.model,
+    storage: product.storage,
+    colour: product.colour,
+    colorHex: product.colorHex,
+    priceInr: product.priceInr,
+    originalMsp: product.originalMsp,
+    billAvailable: product.billAvailable,
+    billAmount: product.billAmount,
+    conditionGrade: product.conditionGrade,
+    conditionDescription: product.conditionDescription,
+    batteryHealth: product.batteryHealth,
+    screenSize: product.screenSize,
+    ram: product.ram,
+    processor: product.processor,
+    stockTag: product.stockTag,
+    priceDrop: product.priceDrop,
+    featured: product.featured,
+    inBox: product.inBox,
+    keyFeatures: product.keyFeatures,
+    images: product.images.map(({ url, altText, sortOrder, isPrimary }) => ({
+      url, altText, sortOrder, isPrimary,
+    })),
+    units: product.units.map(({ status, salePriceInr }) => ({ status, salePriceInr })),
+    dateAdded: product.dateAdded,
+    createdAt: product.createdAt,
+    updatedAt: product.updatedAt,
+  };
+}
+
 export async function onRequest(context: { request: Request; env: Env }): Promise<Response> {
   const { request, env } = context;
   if (!env.DB) return json({ error: 'Cloudflare D1 database is not configured. Bind a new store database as DB.' }, 503);
@@ -259,11 +291,6 @@ export async function onRequest(context: { request: Request; env: Env }): Promis
   const method = request.method.toUpperCase();
 
   try {
-    if (path === '/health' && method === 'GET') {
-      await env.DB.prepare('SELECT 1').first();
-      return json({ status: 'ok', mode: 'd1', database: 'connected', imageStorage: env.R2 ? 'R2' : 'disabled' });
-    }
-
     if (path === '/auth/login' && method === 'POST') {
       const body = await request.json() as { email?: string; password?: string };
       const email = body.email?.trim().toLowerCase() || '';
@@ -295,6 +322,13 @@ export async function onRequest(context: { request: Request; env: Env }): Promis
     }
 
     const user = await authUser(request, env.MBPC_AUTH_SECRET || '');
+    if (request.headers.has('authorization') && !user) {
+      return json({ error: 'Invalid or expired session.' }, 401);
+    }
+    if (path === '/health' && method === 'GET') {
+      await env.DB.prepare('SELECT 1').first();
+      return json({ status: 'ok', mode: 'd1', database: 'connected', imageStorage: env.R2 ? 'R2' : 'disabled' });
+    }
     if (path === '/auth/me' && method === 'GET') {
       if (!user) return json({ error: 'Authentication required.' }, 401);
       const { exp: _exp, ...publicUser } = user;
@@ -306,23 +340,23 @@ export async function onRequest(context: { request: Request; env: Env }): Promis
     }
 
     let stateRow: StoredState | undefined;
-    let state: DemoState | undefined;
+    let state: StoreState | undefined;
     const load = async () => {
       if (!stateRow || !state) {
         stateRow = await readState(env.DB!);
-        state = JSON.parse(stateRow.value) as DemoState;
+        state = JSON.parse(stateRow.value) as StoreState;
       }
       return state;
     };
     const persist = async () => {
       if (!stateRow || !state) {
-        return json({ error: 'Demo state is unavailable. Please retry.' }, 500);
+        return json({ error: 'Store data is unavailable. Please retry.' }, 500);
       }
       if (new TextEncoder().encode(JSON.stringify(state)).byteLength > 900 * 1024) {
-        return json({ error: 'Demo database is nearly full. Configure R2 for image uploads or reset the demo data.' }, 413);
+        return json({ error: 'Catalogue state is near its safe size limit. Remove embedded image data and migrate to a relational store.' }, 413);
       }
       if (!(await saveState(env.DB!, stateRow, state))) {
-        return json({ error: 'Demo data changed in another request. Please retry.' }, 409);
+        return json({ error: 'Store data changed in another request. Please retry.' }, 409);
       }
       return null;
     };
@@ -341,16 +375,22 @@ export async function onRequest(context: { request: Request; env: Env }): Promis
       if (sort === 'battery-desc') products.sort((a, b) => (b.batteryHealth || 0) - (a.batteryHealth || 0));
       if (!sort || sort === 'featured') products.sort((a, b) => Number(b.featured) - Number(a.featured));
       const total = products.length;
-      return json({ products: products.slice((page - 1) * limit, page * limit), total, page, limit, pages: Math.ceil(total / limit) });
+      const pageProducts = products.slice((page - 1) * limit, page * limit);
+      return json({
+        products: user ? pageProducts : pageProducts.map(serializePublicProduct),
+        total, page, limit, pages: Math.ceil(total / limit),
+      });
     }
 
     const productDetail = path.match(/^\/products\/([^/]+)$/);
     if (productDetail && method === 'GET') {
       const product = (await load()).products.find(item => item.id === productDetail[1]);
-      return product ? json(product) : json({ error: 'Product not found.' }, 404);
+      return product ? json(user ? product : serializePublicProduct(product)) : json({ error: 'Product not found.' }, 404);
     }
     const productInventory = path.match(/^\/products\/([^/]+)\/inventory$/);
     if (productInventory && method === 'GET') {
+      const denied = requireStaff();
+      if (denied) return denied;
       const product = (await load()).products.find(item => item.id === productInventory[1]);
       return product ? json(product.units) : json({ error: 'Product not found.' }, 404);
     }
@@ -565,24 +605,7 @@ export async function onRequest(context: { request: Request; env: Env }): Promis
     if (path === '/uploads/image' && method === 'POST') {
       const denied = requireStaff();
       if (denied) return denied;
-      const form = await request.formData();
-      const file = form.get('image');
-      if (!(file instanceof File)) return json({ error: 'No image file provided.' }, 400);
-      if (file.size > (env.R2 ? 5 * 1024 * 1024 : 60 * 1024)) {
-        return json({ error: env.R2 ? 'File too large. Maximum 5MB.' : 'Uploads are limited to 60KB until R2 is configured.' }, 400);
-      }
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const format = detectImageFormat(bytes);
-      if (!format) return json({ error: 'The uploaded file is not a supported image.' }, 400);
-      if (env.R2) {
-        const filename = `${crypto.randomUUID()}.${format.extension}`;
-        await env.R2.put(filename, bytes, { httpMetadata: { contentType: format.mimeType } });
-        return json({ url: `/api/uploads/file/${filename}`, filename, size: file.size });
-      }
-      let binary = '';
-      for (const byte of bytes) binary += String.fromCharCode(byte);
-      const dataUrl = `data:${format.mimeType};base64,${btoa(binary)}`;
-      return json({ url: dataUrl, filename: `demo-${crypto.randomUUID()}`, size: file.size });
+      return json({ error: 'Cloudflare image uploads are disabled until image decoding and WebP normalization are supported.' }, 503);
     }
 
     const uploadedFile = path.match(/^\/uploads\/file\/([a-zA-Z0-9-]+\.(?:jpg|png|webp|gif))$/);
@@ -590,9 +613,14 @@ export async function onRequest(context: { request: Request; env: Env }): Promis
       if (!env.R2) return json({ error: 'Image is not available without the R2 binding.' }, 404);
       const object = await env.R2.get(uploadedFile[1]);
       if (!object) return json({ error: 'File not found.' }, 404);
+      const extension = uploadedFile[1].split('.').pop();
+      const contentType = extension === 'jpg' ? 'image/jpeg'
+        : extension === 'png' ? 'image/png'
+          : extension === 'webp' ? 'image/webp'
+            : 'image/gif';
       return new Response(object.body, {
         headers: {
-          'Content-Type': object.httpMetadata?.contentType || 'application/octet-stream',
+          'Content-Type': contentType,
           'Cache-Control': 'public, max-age=31536000, immutable',
           'X-Content-Type-Options': 'nosniff',
         },
@@ -614,7 +642,7 @@ export async function onRequest(context: { request: Request; env: Env }): Promis
     if (path === '/inspections' && method === 'POST') {
       const denied = requireStaff();
       if (denied) return denied;
-      return json({ error: 'Inspection entry is not enabled in demo mode.' }, 501);
+      return json({ error: 'Inspection entry is not enabled for this Cloudflare backend.' }, 501);
     }
 
     const uploadedFileToDelete = path.match(/^\/uploads\/([a-zA-Z0-9-]+(?:\.(?:jpg|png|webp|gif))?)$/);
@@ -627,7 +655,7 @@ export async function onRequest(context: { request: Request; env: Env }): Promis
 
     return json({ error: 'Not found.' }, 404);
   } catch (error) {
-    console.error('Cloudflare demo API error:', error);
-    return json({ error: 'Demo API request failed. Please retry.' }, 500);
+    console.error('Cloudflare API error:', error);
+    return json({ error: 'Store API request failed. Please retry.' }, 500);
   }
 }

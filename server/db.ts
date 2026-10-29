@@ -9,7 +9,7 @@ if (!connectionString) {
 export const pool = new Pool({
   connectionString,
   max: 10,
-  ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
+  ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: true } : undefined,
 });
 
 export async function withTransaction<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {

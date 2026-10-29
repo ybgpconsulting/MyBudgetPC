@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { writeFile } from 'node:fs/promises';
 
 const configuredUrl = process.env.VITE_SITE_URL?.trim();
@@ -13,8 +14,13 @@ try {
   throw new Error('VITE_SITE_URL must be an absolute site URL.');
 }
 
-if (siteUrl.protocol !== 'https:' && siteUrl.hostname !== 'localhost') {
+const isLocalhost = siteUrl.hostname === 'localhost' || siteUrl.hostname === '127.0.0.1';
+if ((!isLocalhost && siteUrl.protocol !== 'https:')
+  || (isLocalhost && !['http:', 'https:'].includes(siteUrl.protocol))) {
   throw new Error('VITE_SITE_URL must use HTTPS outside localhost.');
+}
+if (siteUrl.username || siteUrl.password || siteUrl.pathname !== '/' || siteUrl.search || siteUrl.hash) {
+  throw new Error('VITE_SITE_URL must contain only the canonical site origin.');
 }
 
 const origin = siteUrl.origin;

@@ -1,6 +1,13 @@
 import { PhoneItem } from '../types';
 
-const demoImage = (imagePath: string) => imagePath;
+const DEMO_IMAGES = {
+  laptop: new URL('../assets/demo-products/laptop.svg', import.meta.url).href,
+  desktop: new URL('../assets/demo-products/desktop.svg', import.meta.url).href,
+  build: new URL('../assets/demo-products/build.svg', import.meta.url).href,
+  component: new URL('../assets/demo-products/component.svg', import.meta.url).href,
+  monitor: new URL('../assets/demo-products/monitor.svg', import.meta.url).href,
+  accessories: new URL('../assets/demo-products/accessories.svg', import.meta.url).href,
+};
 
 function demoProduct(product: Omit<PhoneItem, 'dateAdded' | 'images' | 'inBox' | 'inspectionPassed'> & {
   image: string;
@@ -9,7 +16,7 @@ function demoProduct(product: Omit<PhoneItem, 'dateAdded' | 'images' | 'inBox' |
   return {
     ...details,
     dateAdded: '2026-10-29',
-    images: [demoImage(image)],
+    images: [image],
     inBox: {
       chargerIncluded: false,
       originalBox: false,
@@ -46,7 +53,7 @@ export const DEMO_PRODUCTS: PhoneItem[] = [
     featured: true,
     status: 'Available',
     availableQuantity: 2,
-    image: '/demo-products/laptop.svg',
+    image: DEMO_IMAGES.laptop,
     keyFeatures: ['512GB NVMe SSD', '16GB memory', 'Full HD anti-glare display', 'Wi-Fi and Bluetooth'],
   }),
   demoProduct({
@@ -72,7 +79,7 @@ export const DEMO_PRODUCTS: PhoneItem[] = [
     featured: true,
     status: 'Available',
     availableQuantity: 1,
-    image: '/demo-products/laptop.svg',
+    image: DEMO_IMAGES.laptop,
     keyFeatures: ['256GB SSD', '8GB memory', '15.6-inch display', 'Integrated graphics'],
   }),
   demoProduct({
@@ -97,7 +104,7 @@ export const DEMO_PRODUCTS: PhoneItem[] = [
     featured: true,
     status: 'Available',
     availableQuantity: 2,
-    image: '/demo-products/desktop.svg',
+    image: DEMO_IMAGES.desktop,
     keyFeatures: ['Compact tower chassis', '512GB SSD', '16GB memory', 'Display sold separately'],
   }),
   demoProduct({
@@ -122,7 +129,7 @@ export const DEMO_PRODUCTS: PhoneItem[] = [
     featured: false,
     status: 'Available',
     availableQuantity: 1,
-    image: '/demo-products/desktop.svg',
+    image: DEMO_IMAGES.desktop,
     keyFeatures: ['Small-form-factor chassis', '256GB SSD', '8GB memory', 'Wired network connection'],
   }),
   demoProduct({
@@ -147,7 +154,7 @@ export const DEMO_PRODUCTS: PhoneItem[] = [
     featured: true,
     status: 'Available',
     availableQuantity: 1,
-    image: '/demo-products/build.svg',
+    image: DEMO_IMAGES.build,
     keyFeatures: ['AMD Ryzen 5 5600 processor', '32GB DDR4 memory', '1TB NVMe storage', 'Example build; GPU not included'],
   }),
   demoProduct({
@@ -172,7 +179,7 @@ export const DEMO_PRODUCTS: PhoneItem[] = [
     featured: false,
     status: 'Available',
     availableQuantity: 1,
-    image: '/demo-products/build.svg',
+    image: DEMO_IMAGES.build,
     keyFeatures: ['AMD Ryzen 5 4600G APU', '16GB DDR4 memory', '512GB NVMe storage', 'Integrated graphics'],
   }),
   demoProduct({
@@ -195,7 +202,7 @@ export const DEMO_PRODUCTS: PhoneItem[] = [
     featured: true,
     status: 'Available',
     availableQuantity: 3,
-    image: '/demo-products/component.svg',
+    image: DEMO_IMAGES.component,
     keyFeatures: ['1TB sample capacity', 'M.2 2280 form factor', 'PCIe Gen 3 x4 interface', 'Check motherboard compatibility'],
   }),
   demoProduct({
@@ -218,7 +225,7 @@ export const DEMO_PRODUCTS: PhoneItem[] = [
     featured: false,
     status: 'Available',
     availableQuantity: 2,
-    image: '/demo-products/component.svg',
+    image: DEMO_IMAGES.component,
     keyFeatures: ['16GB total memory', '2 × 8GB matched kit', 'DDR4, 3200 MT/s example', 'Check platform compatibility'],
   }),
   demoProduct({
@@ -243,7 +250,7 @@ export const DEMO_PRODUCTS: PhoneItem[] = [
     featured: true,
     status: 'Available',
     availableQuantity: 2,
-    image: '/demo-products/monitor.svg',
+    image: DEMO_IMAGES.monitor,
     keyFeatures: ['24-inch IPS panel example', 'Full HD resolution', '75Hz refresh rate example', 'Stand and cables require confirmation'],
   }),
   demoProduct({
@@ -268,7 +275,7 @@ export const DEMO_PRODUCTS: PhoneItem[] = [
     featured: false,
     status: 'Available',
     availableQuantity: 1,
-    image: '/demo-products/monitor.svg',
+    image: DEMO_IMAGES.monitor,
     keyFeatures: ['27-inch IPS panel example', 'QHD resolution', '75Hz refresh rate example', 'Check ports and accessories'],
   }),
   demoProduct({
@@ -291,7 +298,7 @@ export const DEMO_PRODUCTS: PhoneItem[] = [
     featured: true,
     status: 'Available',
     availableQuantity: 3,
-    image: '/demo-products/accessories.svg',
+    image: DEMO_IMAGES.accessories,
     keyFeatures: ['Keyboard and optical mouse', 'Wired USB-A connection', 'Layout and key condition require confirmation', 'Compatibility: standard USB host'],
   }),
   demoProduct({
@@ -314,7 +321,7 @@ export const DEMO_PRODUCTS: PhoneItem[] = [
     featured: false,
     status: 'Available',
     availableQuantity: 1,
-    image: '/demo-products/accessories.svg',
+    image: DEMO_IMAGES.accessories,
     keyFeatures: ['Example HDMI output', 'USB-A accessory ports', 'USB-C power delivery pass-through example', 'Confirm host-device support'],
   }),
 ];
