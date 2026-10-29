@@ -130,7 +130,10 @@ test('Pages API signs staff tokens and enforces admin-only deletion', async () =
   const adminDelete = await call(db, `/api/products/${product.id}`, 'DELETE', undefined, login.token, authConfig);
   assert.equal(adminDelete.status, 200);
 
-  const tamperedToken = `${login.token.slice(0, -1)}x`;
+  const [payload, signature] = login.token.split('.');
+  assert.ok(payload && signature);
+  const changedSignature = `${signature[0] === 'A' ? 'B' : 'A'}${signature.slice(1)}`;
+  const tamperedToken = `${payload}.${changedSignature}`;
   const invalidSession = await call(db, '/api/auth/me', 'GET', undefined, tamperedToken, authConfig);
   assert.equal(invalidSession.status, 401);
 });

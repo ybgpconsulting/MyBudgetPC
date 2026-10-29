@@ -32,11 +32,11 @@ const AppContent: React.FC = () => {
           : activeView === 'checkout'
             ? `Review your enquiry${suffix}`
             : activeView === 'stock'
-              ? `Computer and component catalogue${suffix}`
-              : `${SITE_CONFIG.storeName} | Computers, Components & Accessories`,
+            ? `Refurbished computer catalogue${suffix}`
+              : `${SITE_CONFIG.storeName} | Refurbished Computers & Components`,
       description: product
         ? `${product.brand} ${product.model}. ${product.conditionDescription || 'View the product configuration and enquire about current availability and pricing.'}`
-        : 'Explore computers, PC components and accessories from My Budget PC. Enquire directly to confirm current availability and pricing.',
+        : 'Explore refurbished computers, laptops, PC components and peripherals from My Budget PC. Enquire directly to confirm current availability and pricing.',
       canonicalUrl: pathname,
       product: product || null,
     });

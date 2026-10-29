@@ -1,14 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDownUp, ArrowLeft, ArrowRight, Check, ChevronDown, Cpu, HardDrive,
-  Laptop, Menu, Monitor, Mouse, PackageCheck, Plus, Search, ShieldCheck,
+  Laptop, MapPin, Menu, Monitor, Mouse, PackageCheck, Phone, Plus, Search, ShieldCheck,
   ShoppingBag, SlidersHorizontal, Trash2, Truck, X,
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
 import { PhoneItem } from '../../types';
 import { SITE_CONFIG, formatINR } from '../../config/siteConfig';
 import {
-  calculateCartSubtotal, CartLine, filterProducts, getProductVariant, loadCart,
+  calculateCartSubtotal, CartLine, filterProducts, getAvailabilityLabel, getConditionGradeLabel,
+  getProductVariant, isValidEnquiryPhone, isValidIndianPinCode, loadCart,
 } from '../../utils/storefront';
 import { buildCartEnquiryMessage, buildProductEnquiryMessage, createWhatsAppUrl } from '../../utils/whatsapp';
 
@@ -88,7 +89,7 @@ function QuantityControl({
 export const Storefront: React.FC = () => {
   const {
     phones, filters, setFilters, activeView, activeDetailId, setActiveView,
-    loading, apiError, refreshPhones,
+    loading, apiError, refreshPhones, isDemoCatalog,
   } = useInventory();
   const [cart, setCart] = useState<CartLine[]>(() => {
     try {
@@ -145,6 +146,7 @@ export const Storefront: React.FC = () => {
     query: filters.searchQuery,
     category: filters.category,
     brand: filters.brand,
+    condition: filters.condition,
     minPrice: filters.minPrice,
     maxPrice: filters.maxPrice,
     sortBy: filters.sortBy,
@@ -153,6 +155,7 @@ export const Storefront: React.FC = () => {
 
   const subtotal = calculateCartSubtotal(cart, phones);
   const cartCount = cart.reduce((total, line) => total + line.quantity, 0);
+  const displayedCartCount = isDemoCatalog ? 0 : cartCount;
   const selectedProduct = phones.find((product) => product.id === activeDetailId);
   const isCatalog = activeView === 'stock' || activeView === 'accessories';
   const isCheckout = activeView === 'checkout';
@@ -171,6 +174,10 @@ export const Storefront: React.FC = () => {
   };
 
   const addToCart = (product: PhoneItem) => {
+    if (isDemoCatalog) {
+      setNotice('Demo products cannot be added to an enquiry.');
+      return;
+    }
     const stock = availableQuantity(product);
     if (product.status !== 'Available' || stock < 1) {
       setNotice('This product is not currently available to add.');
@@ -207,37 +214,44 @@ export const Storefront: React.FC = () => {
   const updateFilter = (key: 'searchQuery' | 'category' | 'brand' | 'minPrice' | 'maxPrice' | 'sortBy' | 'onlyAvailable', value: string | number | boolean) => {
     setFilters((previous) => ({ ...previous, [key]: value }));
   };
+  const updateConditionFilter = (value: string) => {
+    setFilters((previous) => ({ ...previous, condition: value ? [value] : [] }));
+  };
   const clearCatalogFilters = () => setFilters((previous) => ({
     ...previous,
     searchQuery: '',
     category: 'All',
     brand: 'All',
+    condition: [],
     minPrice: 0,
     maxPrice: Number.MAX_SAFE_INTEGER,
     onlyAvailable: false,
   }));
   const activeFilterCount = Number(filters.category !== 'All')
     + Number(filters.brand !== 'All')
+    + Number(filters.condition.length > 0)
     + Number(filters.minPrice > 0)
     + Number(filters.maxPrice < Number.MAX_SAFE_INTEGER)
     + Number(filters.onlyAvailable);
 
-  const productWhatsAppUrl = (product: PhoneItem, quantity = 1) => createWhatsAppUrl(
-    buildProductEnquiryMessage(
-      product,
-      quantity,
-      `${SITE_CONFIG.siteUrl || window.location.origin}/product/${encodeURIComponent(product.id)}`,
-    ),
-  );
+  const productWhatsAppUrl = (product: PhoneItem, quantity = 1) => isDemoCatalog
+    ? null
+    : createWhatsAppUrl(
+      buildProductEnquiryMessage(
+        product,
+        quantity,
+        `${SITE_CONFIG.siteUrl || window.location.origin}/product/${encodeURIComponent(product.id)}`,
+      ),
+    );
 
-  const cartWhatsAppUrl = createWhatsAppUrl(
+  const cartWhatsAppUrl = isDemoCatalog ? null : createWhatsAppUrl(
     buildCartEnquiryMessage(cart, phones, customer, SITE_CONFIG.siteUrl || window.location.origin),
   );
 
   const canSubmitCustomer = customer.name.trim().length > 0
-    && /^[+()\d\s-]{7,20}$/.test(customer.phone.trim())
+    && isValidEnquiryPhone(customer.phone)
     && (customer.deliveryPreference === 'pickup'
-      || (customer.address.trim().length > 0 && /^[a-zA-Z0-9 -]{4,10}$/.test(customer.pinCode.trim())));
+      || (customer.address.trim().length > 0 && isValidIndianPinCode(customer.pinCode)));
   const unavailableCartLine = cart.some((line) => {
     const product = phones.find((item) => item.id === line.productId);
     return !product || product.status !== 'Available' || line.quantity > availableQuantity(product);
@@ -256,27 +270,32 @@ export const Storefront: React.FC = () => {
           aria-label={`View ${product.brand} ${product.model}`}
         >
           <ProductImage product={product} className="h-full w-full object-contain" />
-          {product.featured && <span className="mbpc-product-badge">Featured</span>}
+          {isDemoCatalog
+            ? <span className="mbpc-product-badge mbpc-demo-product-badge">Demo sample</span>
+            : product.featured && <span className="mbpc-product-badge">Featured</span>}
         </button>
         <div className="mbpc-product-body">
           <p className="mbpc-product-category">{product.category || 'Computer equipment'}</p>
           <button type="button" className="mbpc-product-name" onClick={() => setActiveView('detail', product.id)}>
             {product.brand} {product.model}
           </button>
+          <span className="mbpc-condition-chip">{getConditionGradeLabel(product.condition)}</span>
           <p className="mbpc-product-variant">{getProductVariant(product)}</p>
           <div className="mbpc-product-price">
-            {product.price > 0 ? formatINR(product.price) : <span className="mbpc-price-pending">Price on request</span>}
+            {isDemoCatalog
+              ? <><span className="mbpc-demo-price-label">Demo estimate</span> {formatINR(product.price)}</>
+              : product.price > 0 ? formatINR(product.price) : <span className="mbpc-price-pending">Price on request</span>}
           </div>
           <p className={`mbpc-stock ${stock > 0 ? 'is-available' : 'is-unavailable'}`}>
-            {stock > 0 ? (stock === 1 ? 'Available' : `${stock} available`) : 'Availability to confirm'}
+            {isDemoCatalog ? 'Sample quantity only · no live stock' : getAvailabilityLabel(product)}
           </p>
           <div className="mbpc-product-actions">
-            <button type="button" className="mbpc-button mbpc-button-primary" onClick={() => addToCart(product)} disabled={stock < 1}>
-              <ShoppingBag size={16} aria-hidden="true" /> Add to enquiry
+            <button type="button" className="mbpc-button mbpc-button-primary" onClick={() => addToCart(product)} disabled={isDemoCatalog || stock < 1}>
+              <ShoppingBag size={16} aria-hidden="true" /> {isDemoCatalog ? 'Demo only' : 'Add to enquiry'}
             </button>
             {whatsappUrl
               ? <a className="mbpc-button mbpc-button-secondary" href={whatsappUrl} target="_blank" rel="noopener noreferrer">Ask on WhatsApp</a>
-              : <button type="button" className="mbpc-button mbpc-button-secondary" disabled title="WhatsApp contact has not been configured">WhatsApp unavailable</button>}
+              : <button type="button" className="mbpc-button mbpc-button-secondary" disabled title={isDemoCatalog ? 'Demo products cannot be enquired about' : 'WhatsApp contact has not been configured'}>{isDemoCatalog ? 'Demo only' : 'WhatsApp unavailable'}</button>}
           </div>
           {line && <span className="sr-only">{line.quantity} in enquiry cart</span>}
         </div>
@@ -321,6 +340,16 @@ export const Storefront: React.FC = () => {
           <select value={filters.brand} onChange={(event) => updateFilter('brand', event.target.value)}>
             <option value="All">All brands</option>
             {brands.map((brand) => <option key={brand} value={brand}>{brand}</option>)}
+          </select>
+        </label>
+        <label className="mbpc-filter-label">
+          Condition grade
+          <select value={filters.condition[0] || ''} onChange={(event) => updateConditionFilter(event.target.value)}>
+            <option value="">All grades</option>
+            <option value="A+">Grade A+</option>
+            <option value="A">Grade A</option>
+            <option value="B">Grade B</option>
+            <option value="C">Grade C</option>
           </select>
         </label>
         <label className="mbpc-filter-label">
@@ -375,7 +404,7 @@ export const Storefront: React.FC = () => {
       ['Category', selectedProduct.category || 'Computer equipment'],
       ['Configuration', getProductVariant(selectedProduct)],
       ['Display', selectedProduct.screenSize],
-      ['Condition', selectedProduct.condition],
+      ['Condition grade', getConditionGradeLabel(selectedProduct.condition)],
     ].filter((entry): entry is [string, string] => Boolean(entry[1]));
     return (
       <>
@@ -390,9 +419,10 @@ export const Storefront: React.FC = () => {
             <p className="mbpc-eyebrow">{selectedProduct.category || 'COMPUTER EQUIPMENT'}</p>
             <h1>{selectedProduct.brand} {selectedProduct.model}</h1>
             <p className="mbpc-detail-variant">{getProductVariant(selectedProduct)}</p>
-            <p className="mbpc-detail-price">{selectedProduct.price > 0 ? formatINR(selectedProduct.price) : 'Price on request'}</p>
+            <span className="mbpc-condition-chip mbpc-detail-condition">{getConditionGradeLabel(selectedProduct.condition)}</span>
+            <p className="mbpc-detail-price">{isDemoCatalog ? `Demo estimate · ${formatINR(selectedProduct.price)}` : selectedProduct.price > 0 ? formatINR(selectedProduct.price) : 'Price on request'}</p>
             <p className={`mbpc-stock ${stock > 0 ? 'is-available' : 'is-unavailable'}`}>
-              {stock > 0 ? (stock === 1 ? 'Available to enquire' : `${stock} available to enquire`) : 'Availability to confirm'}
+              {isDemoCatalog ? 'Sample listing only · no live inventory' : stock > 0 ? `${getAvailabilityLabel(selectedProduct)} to enquire` : getAvailabilityLabel(selectedProduct)}
             </p>
             {variants.length > 1 && (
               <label className="mbpc-variant-select">
@@ -412,21 +442,45 @@ export const Storefront: React.FC = () => {
                 <ul>{selectedProduct.keyFeatures.map((feature) => <li key={feature}><Check size={15} aria-hidden="true" />{feature}</li>)}</ul>
               </div>
             )}
+            {(Object.entries({
+              'Charger included': selectedProduct.inBox.chargerIncluded,
+              'Original box included': selectedProduct.inBox.originalBox,
+              'Tax invoice provided': selectedProduct.inBox.taxInvoiceProvided,
+              'Cable included': selectedProduct.inBox.cableIncluded,
+              'Warranty applicable': selectedProduct.inBox.warrantyApplicable,
+            }).some(([, included]) => included) || isDemoCatalog) && (
+              <div className="mbpc-highlights">
+                <h2>Included with this listing</h2>
+                <ul>
+                  {Object.entries({
+                    'Charger included': selectedProduct.inBox.chargerIncluded,
+                    'Original box included': selectedProduct.inBox.originalBox,
+                    'Tax invoice provided': selectedProduct.inBox.taxInvoiceProvided,
+                    'Cable included': selectedProduct.inBox.cableIncluded,
+                    'Warranty applicable': selectedProduct.inBox.warrantyApplicable,
+                  }).filter(([, included]) => included).map(([label]) => (
+                    <li key={label}><Check size={15} aria-hidden="true" />{label}</li>
+                  ))}
+                  {isDemoCatalog && !Object.values(selectedProduct.inBox).some(Boolean)
+                    && <li>No included items are specified in this sample.</li>}
+                </ul>
+              </div>
+            )}
             <div className="mbpc-detail-actions">
-              <button type="button" className="mbpc-button mbpc-button-primary" disabled={stock < 1} onClick={() => addToCart(selectedProduct)}>
-                <ShoppingBag size={17} aria-hidden="true" /> Add to enquiry cart
+              <button type="button" className="mbpc-button mbpc-button-primary" disabled={isDemoCatalog || stock < 1} onClick={() => addToCart(selectedProduct)}>
+                <ShoppingBag size={17} aria-hidden="true" /> {isDemoCatalog ? 'Demo only' : 'Add to enquiry cart'}
               </button>
               {whatsappUrl
                 ? <a className="mbpc-button mbpc-button-secondary" href={whatsappUrl} target="_blank" rel="noopener noreferrer">Enquire on WhatsApp</a>
-                : <p className="mbpc-contact-missing">WhatsApp enquiries are unavailable until the store contact number is configured.</p>}
+                : <p className="mbpc-contact-missing">{isDemoCatalog ? 'Demo products cannot be enquired about.' : 'WhatsApp enquiries are unavailable until the store contact number is configured.'}</p>}
             </div>
-            <p className="mbpc-disclaimer"><ShieldCheck size={16} aria-hidden="true" />Availability and final pricing are confirmed by the store before purchase.</p>
+            <p className="mbpc-disclaimer"><ShieldCheck size={16} aria-hidden="true" />{isDemoCatalog ? 'All sample names, descriptions, specifications, prices and quantities are fictional and not for sale.' : 'Availability and final pricing are confirmed by the store before purchase.'}</p>
           </div>
         </section>
-        <div className="mbpc-mobile-purchase-bar">
+        {!isDemoCatalog && <div className="mbpc-mobile-purchase-bar">
           <strong>{selectedProduct.price > 0 ? formatINR(selectedProduct.price) : 'Price on request'}</strong>
           <button type="button" className="mbpc-button mbpc-button-primary" disabled={stock < 1} onClick={() => addToCart(selectedProduct)}>Add to enquiry</button>
-        </div>
+        </div>}
       </>
     );
   };
@@ -470,11 +524,18 @@ export const Storefront: React.FC = () => {
     <section className="mbpc-checkout">
       <div className="mbpc-checkout-header">
         <button type="button" className="mbpc-back-link" onClick={() => setActiveView('stock')}><ArrowLeft size={16} /> Back to catalogue</button>
-        <p className="mbpc-eyebrow">REVIEW BEFORE WHATSAPP</p>
-        <h1>Review your enquiry</h1>
-        <p>Check your items and details. WhatsApp will open with a pre-filled message; you must send it yourself.</p>
+        <p className="mbpc-eyebrow">{isDemoCatalog ? 'DEMO MODE' : 'REVIEW BEFORE WHATSAPP'}</p>
+        <h1>{isDemoCatalog ? 'Sample catalogue' : 'Review your enquiry'}</h1>
+        <p>{isDemoCatalog ? 'This read-only catalogue is for demonstration. Sample items cannot be purchased or enquired about.' : 'Check your items and details. WhatsApp will open with a pre-filled message; you must send it yourself.'}</p>
       </div>
-      {cart.length === 0 ? (
+      {isDemoCatalog ? (
+        <section className="mbpc-empty-state mbpc-demo-notice" role="status">
+          <PackageCheck size={36} aria-hidden="true" />
+          <h2>Demo catalogue is read-only</h2>
+          <p>These example products, prices and quantities are fictional. Cart and WhatsApp enquiries are disabled in demo mode.</p>
+          <button type="button" className="mbpc-button mbpc-button-primary" onClick={() => navigateCatalog()}>Browse demo products</button>
+        </section>
+      ) : cart.length === 0 ? (
         <section className="mbpc-empty-state">
           <ShoppingBag size={36} aria-hidden="true" />
           <h2>Your enquiry cart is empty</h2>
@@ -495,7 +556,9 @@ export const Storefront: React.FC = () => {
           <form className="mbpc-checkout-panel mbpc-customer-form" onSubmit={(event) => event.preventDefault()}>
             <div className="mbpc-panel-heading"><h2>Your details</h2><span>Required for the enquiry</span></div>
             <label>Full name<input autoComplete="name" required value={customer.name} onChange={(event) => setCustomer({ ...customer, name: event.target.value })} /></label>
-            <label>Phone number<input type="tel" autoComplete="tel" required minLength={7} maxLength={20} pattern="[+()0-9 -]{7,20}" value={customer.phone} onChange={(event) => setCustomer({ ...customer, phone: event.target.value })} /></label>
+            <label>Phone number<input type="tel" autoComplete="tel" required minLength={7} maxLength={20} pattern="[+()0-9 -]{7,20}" value={customer.phone} onChange={(event) => setCustomer({ ...customer, phone: event.target.value })} />
+              {customer.phone && !isValidEnquiryPhone(customer.phone) && <small className="mbpc-field-hint" role="alert">Enter a phone number containing 7–15 digits.</small>}
+            </label>
             <fieldset>
               <legend>Delivery or pickup</legend>
               <label className="mbpc-radio"><input type="radio" name="delivery" checked={customer.deliveryPreference === 'delivery'} onChange={() => setCustomer({ ...customer, deliveryPreference: 'delivery' })} /><Truck size={16} /> Delivery</label>
@@ -504,7 +567,9 @@ export const Storefront: React.FC = () => {
             {customer.deliveryPreference === 'delivery' && (
               <div className="mbpc-address-fields">
                 <label>Delivery address<input autoComplete="street-address" required value={customer.address} onChange={(event) => setCustomer({ ...customer, address: event.target.value })} /></label>
-                <label>PIN code<input autoComplete="postal-code" required minLength={4} maxLength={10} pattern="[a-zA-Z0-9 -]{4,10}" value={customer.pinCode} onChange={(event) => setCustomer({ ...customer, pinCode: event.target.value })} /></label>
+                <label>PIN code<input autoComplete="postal-code" inputMode="numeric" required minLength={6} maxLength={6} pattern="[0-9]{6}" value={customer.pinCode} onChange={(event) => setCustomer({ ...customer, pinCode: event.target.value })} />
+                  {customer.pinCode && !isValidIndianPinCode(customer.pinCode) && <small className="mbpc-field-hint" role="alert">Enter a valid six-digit PIN code.</small>}
+                </label>
                 <small>Delivery charges will be confirmed by the store.</small>
               </div>
             )}
@@ -524,7 +589,7 @@ export const Storefront: React.FC = () => {
 
   return (
     <div className="mbpc-app">
-      <div className="mbpc-topbar"><div>Independent product listings. Direct enquiries. No online payment.</div></div>
+      <div className="mbpc-topbar"><div>Refurbished computers and components. Direct enquiries. No online payment.</div></div>
       <header className="mbpc-header">
         <div className="mbpc-header-inner">
           <Logo onClick={navigateHome} />
@@ -539,9 +604,9 @@ export const Storefront: React.FC = () => {
               if (!isCatalog) navigateCatalog();
               window.setTimeout(() => searchRef.current?.focus(), 0);
             }} aria-label="Search products"><Search size={19} /></button>
-            <button type="button" className="mbpc-cart-trigger" onClick={() => setCartOpen(true)} aria-label={`Open enquiry cart, ${cartCount} items`}>
+            <button type="button" className="mbpc-cart-trigger" onClick={() => setCartOpen(true)} aria-label={`Open enquiry cart, ${displayedCartCount} items`}>
               <ShoppingBag size={18} /><span className="mbpc-cart-trigger-text">Enquiry cart</span>
-              <span className="mbpc-cart-count">{cartCount}</span>
+              <span className="mbpc-cart-count">{displayedCartCount}</span>
             </button>
             <button type="button" className="mbpc-menu-trigger" onClick={() => setMobileMenuOpen((open) => !open)} aria-expanded={mobileMenuOpen} aria-label="Toggle menu">
               {mobileMenuOpen ? <X size={21} /> : <Menu size={21} />}
@@ -554,19 +619,25 @@ export const Storefront: React.FC = () => {
             <button type="button" onClick={() => navigateCatalog()}>Shop all products</button>
             <button type="button" onClick={() => navigateCatalog('Laptops')}>Laptops</button>
             <button type="button" onClick={() => navigateCatalog('Components')}>Components</button>
-            <button type="button" onClick={() => { setCartOpen(true); setMobileMenuOpen(false); }}>Review enquiry cart ({cartCount})</button>
+            <button type="button" onClick={() => { setCartOpen(true); setMobileMenuOpen(false); }}>Review enquiry cart ({displayedCartCount})</button>
           </nav>
         )}
       </header>
 
       <main className="mbpc-main">
+        {isDemoCatalog && (
+          <aside className="mbpc-demo-banner" role="status">
+            <strong>DEMO CATALOGUE</strong>
+            <span>Sample products, specifications, prices and quantities are fictional; images are representative. Nothing shown is real stock or for sale.</span>
+          </aside>
+        )}
         {isCheckout ? renderCheckout() : isDetail ? renderProductDetail() : isCatalog ? renderCatalog() : (
           <>
             <section className="mbpc-hero">
               <div className="mbpc-hero-copy">
-                <span className="mbpc-hero-kicker"><span aria-hidden="true" /> A better place to start your build</span>
-                <h1>Good tech.<br /><span>Clear choices.</span></h1>
-                <p>Explore computers, parts and everyday essentials. Find the configuration that works for you, then ask us about availability and final pricing.</p>
+                <span className="mbpc-hero-kicker"><span aria-hidden="true" /> Refurbished computers & components</span>
+                <h1>Refurbished tech.<br /><span>Clear choices.</span></h1>
+                <p>Browse refurbished laptops, desktops, components and peripherals. Compare each listing’s configuration and condition grade, then ask the store to confirm availability and final pricing.</p>
                 <div className="mbpc-hero-actions">
                   <button type="button" className="mbpc-button mbpc-button-light" onClick={() => navigateCatalog()}>Explore the catalogue <ArrowRight size={17} /></button>
                   <span><ShieldCheck size={16} /> No online payment required</span>
@@ -620,15 +691,27 @@ export const Storefront: React.FC = () => {
         <div className="mbpc-footer-main">
           <div><Logo onClick={navigateHome} /><p>{SITE_CONFIG.tagline}</p></div>
           <div className="mbpc-footer-links"><strong>Explore</strong><button type="button" onClick={navigateHome}>Home</button><button type="button" onClick={() => navigateCatalog()}>All products</button><button type="button" onClick={() => setActiveView('login')}>Staff sign in</button></div>
+          <div className="mbpc-footer-contact">
+            <strong>Contact & visit</strong>
+            <a href={`tel:${SITE_CONFIG.callingNumber}`}><Phone size={15} aria-hidden="true" />{SITE_CONFIG.displayPhone}</a>
+            <span><MapPin size={15} aria-hidden="true" />{[SITE_CONFIG.location.area, SITE_CONFIG.location.city].filter(Boolean).join(', ')}</span>
+            <a href={SITE_CONFIG.location.googleMapsSearchUrl} target="_blank" rel="noopener noreferrer">View area in Google Maps <ArrowRight size={14} aria-hidden="true" /></a>
+          </div>
           <div className="mbpc-footer-note"><strong>Before you enquire</strong><p>Availability, delivery options, charges and final pricing are confirmed by the store. A WhatsApp message is not an order confirmation.</p></div>
         </div>
-        <div className="mbpc-footer-bottom"><span>© {new Date().getFullYear()} {SITE_CONFIG.storeName}</span><span>Built for better buying decisions.</span></div>
+        <div className="mbpc-footer-bottom">
+          <span>© {new Date().getFullYear()} {SITE_CONFIG.storeName}</span>
+          <a className="mbpc-footer-credit" href="https://ybgp.in/" target="_blank" rel="noopener noreferrer" aria-label="Designed and developed by YBGP, opens in a new tab">
+            <span>Designed &amp; developed by</span>
+            <img src="/YBGP_logo.png" alt="YBGP" loading="lazy" />
+          </a>
+        </div>
       </footer>
 
       <nav className="mbpc-bottom-nav" aria-label="Quick navigation">
         <button type="button" className={!isCatalog && !isDetail && !isCheckout ? 'is-active' : ''} onClick={navigateHome}><Cpu size={19} /><span>Home</span></button>
         <button type="button" className={isCatalog ? 'is-active' : ''} onClick={() => navigateCatalog()}><Search size={19} /><span>Explore</span></button>
-        <button type="button" className={isCheckout ? 'is-active' : ''} onClick={() => { setCartOpen(false); setActiveView('checkout'); }}><ShoppingBag size={19} /><span>Enquiry</span><i>{cartCount}</i></button>
+        <button type="button" className={isCheckout ? 'is-active' : ''} onClick={() => { setCartOpen(false); setActiveView('checkout'); }}><ShoppingBag size={19} /><span>Enquiry</span><i>{displayedCartCount}</i></button>
       </nav>
 
       {notice && <div className="mbpc-toast" role="status">{notice}</div>}
@@ -637,14 +720,16 @@ export const Storefront: React.FC = () => {
       {cartOpen && (
         <div className="mbpc-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) setCartOpen(false); }}>
           <aside className="mbpc-cart-drawer" role="dialog" aria-modal="true" aria-labelledby="cart-title">
-            <div className="mbpc-drawer-header"><div><p className="mbpc-eyebrow">YOUR SELECTION</p><h2 id="cart-title">Enquiry cart <span>({cartCount})</span></h2></div><button type="button" className="mbpc-icon-button" onClick={() => setCartOpen(false)} aria-label="Close cart"><X size={20} /></button></div>
-            {cart.length > 0
+            <div className="mbpc-drawer-header"><div><p className="mbpc-eyebrow">YOUR SELECTION</p><h2 id="cart-title">Enquiry cart <span>({displayedCartCount})</span></h2></div><button type="button" className="mbpc-icon-button" onClick={() => setCartOpen(false)} aria-label="Close cart"><X size={20} /></button></div>
+            {isDemoCatalog
+              ? <div className="mbpc-drawer-empty"><PackageCheck size={30} /><p>Demo mode is read-only. Sample products cannot be added to an enquiry.</p></div>
+              : cart.length > 0
               ? <div className="mbpc-drawer-lines">{cart.map((line) => renderCartLine(line, true))}</div>
               : <div className="mbpc-drawer-empty"><ShoppingBag size={30} /><p>Your cart is ready for its first product.</p><button type="button" className="mbpc-text-link" onClick={() => { setCartOpen(false); navigateCatalog(); }}>Explore products <ArrowRight size={15} /></button></div>}
             <div className="mbpc-drawer-bottom">
-              <div className="mbpc-subtotal"><span>Subtotal</span><strong>{subtotal === null ? 'Pending confirmation' : formatINR(subtotal)}</strong></div>
-              <p>Final prices and availability are confirmed by the store.</p>
-              <button type="button" className="mbpc-button mbpc-button-primary mbpc-review-button" disabled={cart.length === 0} onClick={() => { setCartOpen(false); setActiveView('checkout'); }}>Review enquiry <ArrowRight size={17} /></button>
+              {!isDemoCatalog && <div className="mbpc-subtotal"><span>Subtotal</span><strong>{subtotal === null ? 'Pending confirmation' : formatINR(subtotal)}</strong></div>}
+              <p>{isDemoCatalog ? 'Switch off demo mode to use the live catalogue and enquiry flow.' : 'Final prices and availability are confirmed by the store.'}</p>
+              <button type="button" className="mbpc-button mbpc-button-primary mbpc-review-button" disabled={isDemoCatalog || cart.length === 0} onClick={() => { setCartOpen(false); setActiveView('checkout'); }}>Review enquiry <ArrowRight size={17} /></button>
             </div>
           </aside>
         </div>
@@ -656,6 +741,7 @@ export const Storefront: React.FC = () => {
             <div className="mbpc-drawer-header"><h2 id="filter-title">Filters</h2><button type="button" className="mbpc-icon-button" onClick={() => setFilterOpen(false)} aria-label="Close filters"><X size={20} /></button></div>
             <label className="mbpc-filter-label">Category<select value={filters.category} onChange={(event) => updateFilter('category', event.target.value)}><option value="All">All categories</option>{categories.map((category) => <option key={category}>{category}</option>)}</select></label>
             <label className="mbpc-filter-label">Brand<select value={filters.brand} onChange={(event) => updateFilter('brand', event.target.value)}><option value="All">All brands</option>{brands.map((brand) => <option key={brand} value={brand}>{brand}</option>)}</select></label>
+            <label className="mbpc-filter-label">Condition grade<select value={filters.condition[0] || ''} onChange={(event) => updateConditionFilter(event.target.value)}><option value="">All grades</option><option value="A+">Grade A+</option><option value="A">Grade A</option><option value="B">Grade B</option><option value="C">Grade C</option></select></label>
             <div className="mbpc-price-filters"><label className="mbpc-filter-label">Minimum price<input type="number" min="0" step="1" value={filters.minPrice || ''} onChange={(event) => updateFilter('minPrice', Number(event.target.value) || 0)} /></label><label className="mbpc-filter-label">Maximum price<input type="number" min="0" step="1" value={filters.maxPrice === Number.MAX_SAFE_INTEGER ? '' : filters.maxPrice} placeholder="No limit" onChange={(event) => updateFilter('maxPrice', Number(event.target.value) || Number.MAX_SAFE_INTEGER)} /></label></div>
             <label className="mbpc-checkbox"><input type="checkbox" checked={filters.onlyAvailable} onChange={(event) => updateFilter('onlyAvailable', event.target.checked)} />Show currently available only</label>
             {activeFilterCount > 0 && <button type="button" className="mbpc-text-link" onClick={clearCatalogFilters}>Clear filters ({activeFilterCount})</button>}
@@ -687,7 +773,7 @@ function EmptyState({
       <h2>{apiError ? 'Catalogue temporarily unavailable' : 'The catalogue is being prepared'}</h2>
       <p>{apiError
         ? 'We could not load current products. Please try again in a moment.'
-        : 'No products are listed yet. Please check back soon or contact the store once WhatsApp details are available.'}</p>
+        : 'There are no current product listings. Please check back soon.'}</p>
       <div className="mbpc-empty-actions">
         {apiError && <button type="button" className="mbpc-button mbpc-button-primary" onClick={onRetry}>Try again</button>}
         <button type="button" className="mbpc-button mbpc-button-secondary" onClick={onClear}>Browse all categories</button>

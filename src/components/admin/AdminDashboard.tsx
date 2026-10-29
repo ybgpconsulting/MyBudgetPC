@@ -28,6 +28,7 @@ import { useAuth } from '../../context/AuthContext';
 import { api } from '../../api/client';
 import { CustomerDetailsModal } from '../common/CustomerDetailsModal';
 import { readBulkStockRows } from '../../utils/bulkStockImport';
+import { parseKeyFeatures } from '../../utils/storefront';
 
 const PRESET_BRANDS = [
   'Acer', 'AMD', 'Apple', 'ASUS', 'Corsair', 'Dell', 'Gigabyte', 'HP',
@@ -71,8 +72,9 @@ export const AdminDashboard: React.FC = () => {
     storage: 'N/A' as string,
     colour: '',
     colorHex: '#1e293b',
-    condition: 'A+' as ConditionGrade,
+    condition: '' as '' | ConditionGrade,
     conditionDescription: '',
+    keyFeatures: '',
     batteryHealth: '' as string | number,
     price: 0,
     originalMsp: '' as string | number, // Optional
@@ -161,8 +163,9 @@ export const AdminDashboard: React.FC = () => {
       storage: 'N/A',
       colour: '',
       colorHex: '#1e293b',
-      condition: 'A+',
+      condition: '',
       conditionDescription: '',
+      keyFeatures: '',
       batteryHealth: '',
       price: 0,
       originalMsp: '',
@@ -200,6 +203,7 @@ export const AdminDashboard: React.FC = () => {
       colorHex: phone.colorHex || '#3b82f6',
       condition: normalizeCondition(phone.condition),
       conditionDescription: phone.conditionDescription,
+      keyFeatures: phone.keyFeatures.join('\n'),
       batteryHealth: phone.batteryHealth ?? '',
       price: phone.price,
       originalMsp: phone.originalMsp || '',
@@ -232,6 +236,10 @@ export const AdminDashboard: React.FC = () => {
       alert('Please enter a product model name');
       return;
     }
+    if (!formData.condition) {
+      alert('Please select the product condition grade.');
+      return;
+    }
 
     const imagesArray = formData.imageUrl.trim() ? [formData.imageUrl.trim()] : [];
     if (formData.additionalImageUrl.trim()) {
@@ -262,6 +270,7 @@ export const AdminDashboard: React.FC = () => {
         colorHex: formData.colorHex,
         condition: formData.condition,
         conditionDescription: formData.conditionDescription,
+        keyFeatures: parseKeyFeatures(formData.keyFeatures),
         batteryHealth: parsedBatteryHealth,
         price: Number(formData.price),
         originalMsp: parsedMsp,
@@ -297,6 +306,7 @@ export const AdminDashboard: React.FC = () => {
         colorHex: formData.colorHex,
         condition: formData.condition,
         conditionDescription: formData.conditionDescription,
+        keyFeatures: parseKeyFeatures(formData.keyFeatures),
         batteryHealth: parsedBatteryHealth,
         price: Number(formData.price),
         originalMsp: parsedMsp,
@@ -319,7 +329,6 @@ export const AdminDashboard: React.FC = () => {
           originalBillIncluded: formData.billAvailable
           , warrantyApplicable: formData.warrantyApplicable
         },
-        keyFeatures: [],
         inspectionPassed: []
       });
       showToast(`Added ${formData.brand} ${formData.model} to master stock!`);
@@ -433,7 +442,7 @@ export const AdminDashboard: React.FC = () => {
               taxInvoiceProvided: parseBoolean(row.TaxInvoiceProvided),
               warrantyApplicable: parseBoolean(row.WarrantyApplicable),
             },
-            keyFeatures: [],
+            keyFeatures: parseKeyFeatures(String(row.KeyFeatures || '').split('|').join('\n')),
             inspectionPassed: [],
           });
           imported += 1;
@@ -955,10 +964,12 @@ export const AdminDashboard: React.FC = () => {
                 <div className="space-y-1.5">
                   <label className="font-bold text-slate-700">Condition Grade</label>
                   <select
+                    required
                     value={formData.condition}
                     onChange={e => setFormData({ ...formData, condition: e.target.value as ConditionGrade })}
                     className="w-full p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900"
                   >
+                    <option value="">Select an observed grade</option>
                     <option value="A+">A+ - Like New</option>
                     <option value="A">A - Excellent</option>
                     <option value="B">B - Very Good</option>
@@ -1132,6 +1143,17 @@ export const AdminDashboard: React.FC = () => {
                     placeholder="Describe display, chassis, parts authenticity..."
                     className="w-full p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900"
                   />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="font-bold text-slate-700">Key specifications</label>
+                  <textarea
+                    rows={4}
+                    value={formData.keyFeatures}
+                    onChange={e => setFormData({ ...formData, keyFeatures: e.target.value })}
+                    placeholder={'One detail per line, for example:\nGraphics: 8GB GDDR6\nPorts: HDMI 2.1, DisplayPort'}
+                    className="w-full p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900"
+                  />
+                  <p className="text-[10px] text-slate-500">Enter only specifications verified for this individual listing.</p>
                 </div>
 
                 <label className="flex items-center gap-2 p-3 rounded-xl bg-emerald-50 border border-emerald-200 cursor-pointer font-bold text-slate-800">

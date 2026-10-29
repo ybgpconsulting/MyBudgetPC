@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" fill="none">
+  <rect width="640" height="480" rx="32" fill="#F4F7FB"/>
+  <rect x="202" y="70" width="236" height="191" rx="15" fill="#101827"/>
+  <rect x="214" y="82" width="212" height="166" rx="8" fill="#DCEBFF"/>
+  <path d="M246 210h148" stroke="#2563EB" stroke-linecap="round" stroke-width="8"/>
+  <path d="M275 262v28m90-28v28m-111 0h132" stroke="#667085" stroke-linecap="round" stroke-width="9"/>
+  <rect x="444" y="144" width="87" height="207" rx="13" fill="#182230"/>
+  <rect x="455" y="157" width="65" height="173" rx="7" fill="#28374B"/>
+  <circle cx="488" cy="337" r="5" fill="#38BDF8"/>
+  <rect x="111" y="127" width="77" height="227" rx="13" fill="#2563EB"/>
+  <path d="M128 151h43m-43 18h43m-43 18h43" stroke="#BBD5FA" stroke-linecap="round" stroke-width="5"/>
+  <text x="320" y="416" fill="#667085" font-family="Arial,sans-serif" font-size="16" font-weight="700" text-anchor="middle" letter-spacing="3">DEMO DESKTOP</text>
+</svg>

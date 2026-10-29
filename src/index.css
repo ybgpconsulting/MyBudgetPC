@@ -223,6 +223,26 @@
   padding: 0 28px;
 }
 
+.mbpc-demo-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 14px 0 0;
+  padding: 12px 15px;
+  border: 1px solid #f3cf83;
+  border-radius: 12px;
+  background: #fff8e8;
+  color: #704b0b;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.mbpc-demo-banner strong {
+  flex: none;
+  font-size: 10px;
+  letter-spacing: .06em;
+}
+
 .mbpc-hero {
   position: relative;
   min-height: 455px;
@@ -542,6 +562,23 @@
   font-weight: 750;
 }
 
+.mbpc-demo-product-badge,
+.mbpc-demo-notice {
+  border-color: #f3cf83;
+  background: #fff8e8;
+  color: #704b0b;
+}
+
+.mbpc-demo-price-label {
+  display: block;
+  margin-bottom: 3px;
+  color: #704b0b;
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
 .mbpc-product-body {
   flex: 1;
   display: flex;
@@ -554,6 +591,27 @@
   color: var(--mbpc-blue);
   font-size: 9px;
   font-weight: 750;
+}
+
+.mbpc-condition-chip {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  min-height: 23px;
+  margin: 8px 0 0;
+  padding: 3px 8px;
+  border: 1px solid #d5e5fb;
+  border-radius: 999px;
+  background: #f2f7ff;
+  color: #1d4e89;
+  font-size: 9px;
+  font-weight: 750;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.mbpc-detail-condition {
+  margin-top: 12px;
 }
 
 .mbpc-product-name {
@@ -623,6 +681,12 @@
 .mbpc-product-actions {
   display: grid;
   gap: 7px;
+}
+
+.mbpc-field-hint {
+  color: #a33b2f;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .mbpc-button {
@@ -733,8 +797,8 @@
 
 .mbpc-footer-main {
   display: grid;
-  grid-template-columns: 1.2fr .55fr 1fr;
-  gap: 56px;
+  grid-template-columns: 1.1fr .55fr .8fr 1fr;
+  gap: 30px;
   padding-bottom: 29px;
 }
 
@@ -780,6 +844,40 @@
   color: white;
 }
 
+.mbpc-footer-contact {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  color: #b4c0d0;
+  font-size: 10px;
+}
+
+.mbpc-footer-contact strong {
+  margin-bottom: 3px;
+  color: #fff;
+  font-size: 11px;
+}
+
+.mbpc-footer-contact a,
+.mbpc-footer-contact span {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: inherit;
+  line-height: 1.5;
+  text-decoration: none;
+}
+
+.mbpc-footer-contact a:hover {
+  color: white;
+}
+
+.mbpc-footer-contact svg {
+  flex: none;
+  margin-top: 1px;
+}
+
 .mbpc-footer-note p {
   max-width: 340px;
   margin: 7px 0 0;
@@ -789,12 +887,43 @@
 
 .mbpc-footer-bottom {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   padding-top: 15px;
   border-top: 1px solid rgba(255,255,255,.14);
   color: #aeb9ca;
   font-size: 9px;
+}
+
+.mbpc-footer-credit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-height: 36px;
+  color: #d3dbe7;
+  text-decoration: none;
+  transition: color .18s ease, opacity .18s ease;
+}
+
+.mbpc-footer-credit:hover {
+  color: #fff;
+  opacity: .9;
+}
+
+.mbpc-footer-credit:focus-visible {
+  border-radius: 4px;
+  outline-color: #93c5fd;
+  outline-offset: 3px;
+}
+
+.mbpc-footer-credit img {
+  display: block;
+  width: 82px;
+  max-height: 32px;
+  object-fit: contain;
+  object-position: center;
 }
 
 .mbpc-page-heading {
@@ -1945,6 +2074,12 @@
     font-size: 10px;
   }
 
+  .mbpc-condition-chip {
+    min-height: 21px;
+    margin-top: 6px;
+    font-size: 8px;
+  }
+
   .mbpc-product-variant {
     min-height: 35px;
     margin: 4px 0 9px;
@@ -2284,6 +2419,48 @@
 
   .mbpc-product-actions .mbpc-button-secondary {
     font-size: 8px;
+  }
+}
+
+@media (max-width: 320px) {
+  body {
+    min-width: 0;
+  }
+
+  .mbpc-header-inner {
+    gap: 4px;
+    padding: 0 8px;
+  }
+
+  .mbpc-brand {
+    gap: 5px;
+  }
+
+  .mbpc-brand-mark {
+    width: 32px;
+    height: 32px;
+  }
+
+  .mbpc-brand-type strong {
+    font-size: 14px;
+  }
+
+  .mbpc-brand-type small {
+    display: none;
+  }
+
+  .mbpc-header-actions {
+    gap: 4px;
+  }
+
+  .mbpc-cart-trigger {
+    min-height: 38px;
+    padding: 0 6px;
+  }
+
+  .mbpc-menu-trigger {
+    width: 38px;
+    height: 38px;
   }
 }
 

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" fill="none">
+  <rect width="640" height="480" rx="32" fill="#F4F7FB"/>
+  <rect x="177" y="82" width="286" height="218" rx="17" fill="#101827"/>
+  <rect x="190" y="95" width="260" height="191" rx="8" fill="#DCEBFF"/>
+  <path d="M209 246h222v40H209z" fill="#BBD5FA"/>
+  <path d="M137 309h366l-34 47H171l-34-47Z" fill="#2563EB"/>
+  <path d="M266 326h108" stroke="#38BDF8" stroke-linecap="round" stroke-width="5"/>
+  <circle cx="320" cy="188" r="44" fill="#fff"/>
+  <path d="M329 165a27 27 0 1 0 21 31h-21v-31Z" fill="#2563EB"/>
+  <path d="M338 158v29h29a29 29 0 0 0-29-29Z" fill="#38BDF8"/>
+  <text x="320" y="416" fill="#667085" font-family="Arial,sans-serif" font-size="16" font-weight="700" text-anchor="middle" letter-spacing="3">DEMO LAPTOP</text>
+</svg>

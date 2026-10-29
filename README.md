@@ -15,7 +15,7 @@ My Budget PC is a mobile-first computer and components storefront. Customers can
 3. Start the API with `npm run server:dev`.
 4. In another terminal, run `npm run dev`. The Vite client uses `VITE_API_URL` from `.env` to reach the API.
 5. To enable customer WhatsApp enquiries, set `VITE_STORE_WHATSAPP_NUMBER` to the store's international phone number (digits only). This is a public contact number, not a secret. The storefront keeps WhatsApp actions unavailable when it is unset.
-6. Add verified products and images through the authenticated admin page at `/login`. No demo products or public demo credentials are included.
+6. Local Vite development shows clearly marked, read-only sample listings across the storefront categories by default. These names, specifications, prices, images, and quantities are fictional and cannot be purchased or sent to WhatsApp. Set `VITE_DEMO_CATALOG=false` to use the live API while developing. Demo products are never enabled in production builds. Add verified products and images through the authenticated admin page at `/login`; no demo staff credentials are included.
 
 Useful checks:
 
@@ -27,9 +27,15 @@ npm run build
 
 ## Product and enquiry behavior
 
-Product data, categories, prices, image URLs, availability, and configuration descriptions come from the inventory API. The new store starts with an empty catalogue rather than displaying unrelated phone-store sample data. Product records represent a specific configuration; matching model records are selectable as alternate configurations.
+In live mode, product data, categories, prices, image URLs, availability, and configuration descriptions come from the inventory API. Product records represent a specific configuration; matching model records are selectable as alternate configurations. Local demo mode uses a separate read-only set of fictional sample listings and does not write them to the API or database.
+
+The storefront loads every product API page so larger inventories are not silently cut off at the API's default page size. Customers can filter by category, brand, condition grade, price, and availability. Product pages display the recorded condition notes, configuration details, and only the accessories or warranty items explicitly marked for that listing. Admin and sales staff must select a condition grade when creating a listing and can enter verified, category-specific specifications one per line.
 
 The enquiry cart is stored in this browser, and quantities are limited to API-reported available inventory. Review requires customer contact information and either delivery details or pickup selection. The generated message includes all listed items, SKUs, selected configuration, quantities, verified prices where present, subtotal when computable, delivery preference, address/PIN when applicable, pending delivery charges, notes, and a request to confirm availability and final pricing. Customers must review and send the message in WhatsApp themselves. The cart is not cleared when WhatsApp opens.
+
+The Express product catalogue omits per-unit inventory identifiers, IMEIs, and inspection records from anonymous product-list and product-detail responses. Authenticated staff retain those details for inventory workflows, and the per-product inventory endpoint requires staff authentication.
+
+Bulk inventory imports accept `.xlsx` and `.csv` files up to 10MB and 1,000 data rows; legacy `.xls` files are not supported. The supplied CSV template includes an optional `KeyFeatures` column; separate multiple specifications with `|`.
 
 ## Cloudflare
 
@@ -49,7 +55,8 @@ The Cloudflare adapter currently stores its D1 catalog and sales state in a sing
 
 ## Production setup still required
 
-- Confirm the store's WhatsApp number, business contact details, public domain, social links, delivery policy, and shipping charges.
+- Confirm whether the published phone accepts WhatsApp, the precise street address, public domain, social links, delivery policy, and shipping charges.
+- The published IQD Technologies site identifies the business area as Preet Vihar, Delhi and lists `+91 90132-66337` for calls. My Budget PC displays that call number and links to a Maps search for the area; the source does not publish a more precise street address or verified WhatsApp designation, so WhatsApp remains separately configured.
 - Add verified My Budget PC inventory and product photography through the admin interface.
 - Provision independent production database, image storage, and deployment resources.
 - Review the D1 JSON-state limitation before accepting business data; use the PostgreSQL backend or a properly normalized production data model as appropriate.

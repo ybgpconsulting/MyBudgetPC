@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { PhoneItem, FilterOptions, ProductCategory, ApiProduct } from '../types';
 import { api } from '../api/client';
-import { SEED_PHONES } from '../data/seedPhones';
+import { fetchAllCatalogProducts, CatalogPage } from '../utils/catalogPagination';
+import { useAuth } from './AuthContext';
 
 interface InventoryContextType {
   phones: PhoneItem[];
@@ -31,6 +32,7 @@ interface InventoryContextType {
   refreshPhones: () => Promise<void>;
   loading: boolean;
   apiError: string | null;
+  isDemoCatalog: boolean;
 }
 
 const DEFAULT_FILTERS: FilterOptions = {
@@ -77,6 +79,7 @@ const emptyInventoryContext: InventoryContextType = {
   refreshPhones: async () => undefined,
   loading: false,
   apiError: null,
+  isDemoCatalog: false,
 };
 
 function mapApiProductToPhoneItem(apiProduct: ApiProduct): PhoneItem {
@@ -162,21 +165,39 @@ function mapPhoneItemToApiPayload(phone: Omit<PhoneItem, 'id' | 'dateAdded'>) {
 }
 
 export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, loading: authLoading } = useAuth();
   const [phones, setPhones] = useState<PhoneItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [isDemoCatalog, setIsDemoCatalog] = useState(false);
   const [selectedPhone, setSelectedPhone] = useState<PhoneItem | null>(null);
   const [activeView, setActiveViewState] = useState<string>('home');
   const [activeDetailId, setActiveDetailId] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterOptions>(DEFAULT_FILTERS);
 
   const refreshPhones = useCallback(async () => {
+    if (authLoading) return;
     setLoading(true);
     setApiError(null);
+    const demoCatalogEnabled = import.meta.env.DEV
+      && import.meta.env.VITE_DEMO_CATALOG !== 'false'
+      && !user
+      && !api.getToken();
+    if (demoCatalogEnabled) {
+      const { DEMO_PRODUCTS } = await import('../data/demoProducts');
+      setPhones(DEMO_PRODUCTS);
+      setIsDemoCatalog(true);
+      setLoading(false);
+      return;
+    }
+
+    setIsDemoCatalog(false);
     try {
       const token = api.getToken();
-      const data = await api.get<{ products: ApiProduct[] }>('/api/products', !!token);
-      const mapped = data.products.map(mapApiProductToPhoneItem);
+      const products = await fetchAllCatalogProducts((page, limit) => (
+        api.get<CatalogPage<ApiProduct>>(`/api/products?page=${page}&limit=${limit}`, !!token)
+      ));
+      const mapped = products.map(mapApiProductToPhoneItem);
       setPhones(mapped);
       setApiError(null);
     } catch (err: any) {
@@ -185,11 +206,11 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [authLoading, user]);
 
   useEffect(() => {
-    refreshPhones();
-  }, [refreshPhones]);
+    if (!authLoading) refreshPhones();
+  }, [authLoading, refreshPhones]);
 
   useEffect(() => {
     const syncRoute = () => {
@@ -395,6 +416,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         refreshPhones,
         loading,
         apiError,
+        isDemoCatalog,
       }}
     >
       {children}

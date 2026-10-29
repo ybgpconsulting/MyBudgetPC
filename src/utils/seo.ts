@@ -9,9 +9,9 @@ interface SeoConfig {
 }
 
 export function updateMetaTags(config: SeoConfig) {
-  const title = config.title || `${SITE_CONFIG.storeName} | Computers, Components & Accessories`;
+  const title = config.title || `${SITE_CONFIG.storeName} | Refurbished Computers & Components`;
   const description = config.description
-    || 'Explore computers, PC components and accessories from My Budget PC. Enquire directly to confirm current availability and pricing.';
+    || 'Explore refurbished computers, laptops, PC components and peripherals from My Budget PC. Enquire directly to confirm availability and pricing.';
   const canonical = new URL(config.canonicalUrl || '/', SITE_CONFIG.siteUrl || window.location.origin).toString();
 
   document.title = title;

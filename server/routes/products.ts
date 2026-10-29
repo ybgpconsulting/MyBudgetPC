@@ -1,14 +1,15 @@
 import { Router, Request, Response } from 'express';
 import { pool, withTransaction } from '../db';
-import { authenticate, authorize, getUser } from '../middleware/authenticate';
+import { authenticate, authorize, getUser, optionalAuthenticate } from '../middleware/authenticate';
 import { validate } from '../middleware/validate';
 import { createAuditLog } from '../middleware/audit';
 import { createProductSchema, updateProductSchema, productFilterSchema } from '../schemas';
+import { serializeInventoryUnit, serializeProductInspection } from '../utils/productResponses';
 
 const router = Router();
 
 // GET /api/products - Public catalog
-router.get('/', async (req: Request, res: Response) => {
+router.get('/', optionalAuthenticate, async (req: Request, res: Response) => {
   try {
     const params = productFilterSchema.parse(req.query);
     const conditions: string[] = [];
@@ -91,16 +92,18 @@ router.get('/', async (req: Request, res: Response) => {
 
     const unitMap: Record<string, any[]> = {};
     if (productIds.length > 0) {
+      const includeStaffDetails = Boolean(getUser(req));
+      const unitFields = includeStaffDetails
+        ? 'id, product_id, stock_tag, imei, status, sale_price_inr, inspection, created_at, updated_at'
+        : 'status, sale_price_inr';
       const { rows: units } = await pool.query(
-        `SELECT id, product_id, stock_tag, imei, status, sale_price_inr, inspection, created_at, updated_at
+        `SELECT ${unitFields}
          FROM inventory_units WHERE product_id = ANY($1::uuid[]) ORDER BY created_at`,
         [productIds]
       );
       for (const unit of units) {
         if (!unitMap[unit.product_id]) unitMap[unit.product_id] = [];
-        unitMap[unit.product_id].push({ id: unit.id, productId: unit.product_id, stockTag: unit.stock_tag,
-          imei: unit.imei, status: unit.status, salePriceInr: unit.sale_price_inr, inspection: unit.inspection,
-          createdAt: unit.created_at, updatedAt: unit.updated_at });
+        unitMap[unit.product_id].push(serializeInventoryUnit(unit, includeStaffDetails));
       }
     }
 
@@ -145,7 +148,7 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 // GET /api/products/:id - Public product detail
-router.get('/:id', async (req: Request, res: Response) => {
+router.get('/:id', optionalAuthenticate, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { rows } = await pool.query(
@@ -166,16 +169,23 @@ router.get('/:id', async (req: Request, res: Response) => {
       `SELECT * FROM product_images WHERE product_id = $1 ORDER BY sort_order`,
       [id]
     );
+    const includeStaffDetails = Boolean(getUser(req));
+    const unitFields = includeStaffDetails
+      ? 'id, product_id, stock_tag, imei, status, sale_price_inr, inspection, created_at, updated_at'
+      : 'status, sale_price_inr';
     const { rows: units } = await pool.query(
-      `SELECT id, product_id, stock_tag, imei, status, sale_price_inr, inspection, created_at, updated_at
+      `SELECT ${unitFields}
        FROM inventory_units WHERE product_id = $1 ORDER BY created_at`, [id]
     );
-    const { rows: inspections } = await pool.query(
-      `SELECT * FROM device_inspections WHERE inventory_unit_id IN
-        (SELECT id FROM inventory_units WHERE product_id = $1)
-       ORDER BY created_at DESC LIMIT 1`,
-      [id]
-    );
+    const inspections = includeStaffDetails
+      ? (await pool.query(
+        `SELECT * FROM device_inspections WHERE inventory_unit_id IN
+          (SELECT id FROM inventory_units WHERE product_id = $1)
+         ORDER BY created_at DESC LIMIT 1`,
+        [id]
+      )).rows
+      : [];
+    const inspection = serializeProductInspection(inspections[0], includeStaffDetails);
     res.json({
       id: r.id,
       category: r.category,
@@ -200,13 +210,10 @@ router.get('/:id', async (req: Request, res: Response) => {
       inBox: r.in_box,
       keyFeatures: r.key_features,
       images: images.map((i: any) => ({ url: i.url, altText: i.alt_text, sortOrder: i.sort_order, isPrimary: i.is_primary })),
-      units: units.map((unit: any) => ({ id: unit.id, productId: unit.product_id, stockTag: unit.stock_tag,
-        imei: unit.imei, status: unit.status, salePriceInr: unit.sale_price_inr, inspection: unit.inspection,
-        createdAt: unit.created_at, updatedAt: unit.updated_at })),
+      units: units.map((unit: any) => serializeInventoryUnit(unit, includeStaffDetails)),
       dateAdded: r.created_at?.toISOString?.()?.split('T')[0] || '',
       status: r.available_units > 0 ? 'available' : 'sold',
-      inspection: inspections[0] ? { overallPass: inspections[0].overall_pass, physicalCondition: inspections[0].physical_condition,
-        inspectedAt: inspections[0].created_at } : null,
+      ...(inspection ? { inspection } : {}),
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     });
@@ -382,7 +389,7 @@ router.delete('/:id', authenticate, authorize('admin'), async (req: Request, res
 });
 
 // GET /api/products/:id/inventory - Get inventory units for a product
-router.get('/:id/inventory', async (req: Request, res: Response) => {
+router.get('/:id/inventory', authenticate, authorize('admin', 'sales'), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { rows } = await pool.query(

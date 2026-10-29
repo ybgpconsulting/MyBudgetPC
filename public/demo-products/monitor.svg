@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" fill="none">
+  <rect width="640" height="480" rx="32" fill="#F4F7FB"/>
+  <rect x="119" y="78" width="402" height="252" rx="19" fill="#101827"/>
+  <rect x="134" y="93" width="372" height="222" rx="10" fill="#DCEBFF"/>
+  <path d="M169 279c48-72 92-51 136-101 52-59 110-53 169-94v231H169v-36Z" fill="#BBD5FA"/>
+  <path d="M169 279c48-72 92-51 136-101 52-59 110-53 169-94" stroke="#2563EB" stroke-linecap="round" stroke-width="9"/>
+  <path d="M320 331v50m-72 0h144" stroke="#667085" stroke-linecap="round" stroke-width="12"/>
+  <text x="320" y="425" fill="#667085" font-family="Arial,sans-serif" font-size="16" font-weight="700" text-anchor="middle" letter-spacing="3">DEMO DISPLAY</text>
+</svg>

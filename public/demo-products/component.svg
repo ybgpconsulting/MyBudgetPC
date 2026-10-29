@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" fill="none">
+  <rect width="640" height="480" rx="32" fill="#F4F7FB"/>
+  <rect x="128" y="112" width="384" height="241" rx="20" fill="#182230"/>
+  <rect x="148" y="132" width="344" height="201" rx="12" fill="#263951"/>
+  <circle cx="250" cy="231" r="67" fill="#DCEBFF"/>
+  <circle cx="250" cy="231" r="42" fill="#2563EB"/>
+  <circle cx="250" cy="231" r="13" fill="#BBD5FA"/>
+  <circle cx="390" cy="231" r="67" fill="#DCEBFF"/>
+  <circle cx="390" cy="231" r="42" fill="#38BDF8"/>
+  <circle cx="390" cy="231" r="13" fill="#BBD5FA"/>
+  <path d="M177 328v28m35-28v28m35-28v28m35-28v28m35-28v28m35-28v28m35-28v28m35-28v28m35-28v28" stroke="#667085" stroke-linecap="round" stroke-width="5"/>
+  <text x="320" y="416" fill="#667085" font-family="Arial,sans-serif" font-size="16" font-weight="700" text-anchor="middle" letter-spacing="3">DEMO COMPONENT</text>
+</svg>

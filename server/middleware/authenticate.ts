@@ -44,6 +44,11 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
   }
 }
 
+export async function optionalAuthenticate(req: Request, res: Response, next: NextFunction) {
+  if (!req.header('authorization')) return next();
+  return authenticate(req, res, next);
+}
+
 export function authorize(...roles: AuthUser['role'][]) {
   return (req: Request, res: Response, next: NextFunction) => {
     const authReq = req as AuthenticatedRequest;

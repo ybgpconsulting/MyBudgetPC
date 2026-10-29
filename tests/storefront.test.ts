@@ -2,8 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { PhoneItem } from '../src/types';
 import {
-  calculateCartSubtotal, CART_STORAGE_KEY, filterProducts, getProductVariant, loadCart,
+  calculateCartSubtotal, CART_STORAGE_KEY, filterProducts, getAvailabilityLabel, getConditionGradeKey,
+  getConditionGradeLabel, getProductVariant, isValidEnquiryPhone, isValidIndianPinCode, loadCart,
+  parseKeyFeatures,
 } from '../src/utils/storefront';
+import { fetchAllCatalogProducts } from '../src/utils/catalogPagination';
 import {
   buildCartEnquiryMessage, buildProductEnquiryMessage, createWhatsAppUrl,
 } from '../src/utils/whatsapp';
@@ -48,6 +51,30 @@ test('catalogue search, component category, availability, and price sorting work
     price: 325000,
     stockTag: 'MBPC-DES-001',
   });
+
+  test('catalogue loading requests every API page instead of silently omitting inventory', async () => {
+    const requestedPages: number[] = [];
+    const products = await fetchAllCatalogProducts(async (page, limit) => {
+      requestedPages.push(page);
+      assert.equal(limit, 100);
+      return {
+        products: Array.from({ length: page === 3 ? 5 : 100 }, (_, index) => `${page}-${index}`),
+        total: 205,
+        limit: 100,
+        page,
+        pages: 3,
+      };
+    });
+
+    assert.deepEqual(requestedPages, [1, 2, 3]);
+    assert.equal(products.length, 205);
+    assert.equal(products.at(-1), '3-4');
+  });
+
+  test('catalogue loading remains compatible with unpaginated API responses', async () => {
+    const products = await fetchAllCatalogProducts(async () => ({ products: ['a', 'b'] }));
+    assert.deepEqual(products, ['a', 'b']);
+  });
   const graphicsCard = makeProduct({
     id: 'gpu-1',
     category: 'Graphics Cards',
@@ -62,6 +89,7 @@ test('catalogue search, component category, availability, and price sorting work
     query: 'mbpc-gpu',
     category: 'All',
     brand: 'All',
+    condition: [],
     minPrice: 0,
     maxPrice: Number.MAX_SAFE_INTEGER,
     sortBy: 'featured',
@@ -71,6 +99,7 @@ test('catalogue search, component category, availability, and price sorting work
     query: '',
     category: 'Components',
     brand: 'All',
+    condition: [],
     minPrice: 0,
     maxPrice: Number.MAX_SAFE_INTEGER,
     sortBy: 'featured',
@@ -80,6 +109,7 @@ test('catalogue search, component category, availability, and price sorting work
     query: '',
     category: 'All',
     brand: 'All',
+    condition: [],
     minPrice: 0,
     maxPrice: Number.MAX_SAFE_INTEGER,
     sortBy: 'price-asc',
@@ -89,6 +119,7 @@ test('catalogue search, component category, availability, and price sorting work
     query: '',
     category: 'All',
     brand: 'Second',
+    condition: [],
     minPrice: 300000,
     maxPrice: Number.MAX_SAFE_INTEGER,
     sortBy: 'price-asc',
@@ -98,11 +129,51 @@ test('catalogue search, component category, availability, and price sorting work
     query: 'workstation',
     category: 'All',
     brand: 'All',
+    condition: [],
     minPrice: 0,
     maxPrice: Number.MAX_SAFE_INTEGER,
     sortBy: 'newest',
     onlyAvailable: false,
   }).map((product) => product.id), ['desktop-1']);
+});
+
+test('condition grades normalize legacy values and filter refurbished listings', () => {
+  const listings = [
+    makeProduct({ id: 'grade-a', condition: 'A' }),
+    makeProduct({ id: 'grade-b', condition: 'Very Good (8.5/10)' }),
+    makeProduct({ id: 'grade-c', condition: 'C' }),
+  ];
+  assert.deepEqual(filterProducts(listings, {
+    query: '',
+    category: 'All',
+    brand: 'All',
+    condition: ['B'],
+    minPrice: 0,
+    maxPrice: Number.MAX_SAFE_INTEGER,
+    sortBy: 'featured',
+    onlyAvailable: false,
+  }).map((product) => product.id), ['grade-b']);
+  assert.equal(getConditionGradeKey('Excellent (9.5/10)'), 'A');
+  assert.equal(getConditionGradeLabel('A+'), 'Grade A+');
+});
+
+test('enquiry contact validation matches phone and Indian PIN formats', () => {
+  assert.equal(isValidEnquiryPhone('+91 98765 43210'), true);
+  assert.equal(isValidEnquiryPhone('+  --'), false);
+  assert.equal(isValidIndianPinCode('110001'), true);
+  assert.equal(isValidIndianPinCode('11000A'), false);
+  assert.equal(isValidIndianPinCode('11000'), false);
+});
+
+test('availability messaging distinguishes sold, reserved, and available inventory', () => {
+  assert.equal(getAvailabilityLabel(makeProduct()), '3 available');
+  assert.equal(getAvailabilityLabel(makeProduct({ status: 'Booked', availableQuantity: 0 })), 'Temporarily reserved');
+  assert.equal(getAvailabilityLabel(makeProduct({ status: 'Sold Out', availableQuantity: 0 })), 'Sold out');
+});
+
+test('key specification entries are trimmed, de-duplicated, and bounded', () => {
+  assert.deepEqual(parseKeyFeatures('GPU: 8GB\n\n Ports: HDMI\nGPU: 8GB'), ['GPU: 8GB', 'Ports: HDMI']);
+  assert.equal(parseKeyFeatures(Array.from({ length: 25 }, (_, index) => `Spec ${index}`).join('\n')).length, 20);
 });
 
 test('cart totals follow current product prices and report pending amounts', () => {
