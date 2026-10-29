@@ -9,7 +9,9 @@ import { authenticate, getUser } from '../middleware/authenticate';
 
 const router = Router();
 const jwtSecret = process.env.JWT_SECRET;
-if (!jwtSecret) throw new Error('JWT_SECRET is required');
+if (!jwtSecret || Buffer.byteLength(jwtSecret, 'utf8') < 32) {
+  throw new Error('JWT_SECRET must be configured with at least 32 bytes.');
+}
 
 // Simple in-memory rate limiter for login (5 attempts per 15 minutes per IP)
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();

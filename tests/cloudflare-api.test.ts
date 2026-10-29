@@ -47,6 +47,18 @@ const makeRequest = (path: string, method = 'GET', body?: unknown, token?: strin
   });
 };
 
+const makeUploadRequest = (token: string | undefined, bytes: Uint8Array, contentType: string, filename: string) => {
+  const form = new FormData();
+  form.append('image', new Blob([bytes], { type: contentType }), filename);
+  const headers = new Headers();
+  if (token) headers.set('authorization', `Bearer ${token}`);
+  return new Request('https://store.example/api/uploads/image', {
+    method: 'POST',
+    headers,
+    body: form,
+  });
+};
+
 async function call(
   db: MemoryD1,
   path: string,
@@ -60,6 +72,91 @@ async function call(
     env: { DB: db, ...config },
   });
 }
+
+test('Pages API rejects invalid optional tokens and protects inventory-unit details', async () => {
+  const db = new MemoryD1();
+  const loginResponse = await call(db, '/api/auth/login', 'POST', {
+    email: authConfig.MBPC_ADMIN_EMAIL,
+    password: authConfig.MBPC_ADMIN_PASSWORD,
+  }, undefined, authConfig);
+  const login = await loginResponse.json() as { token: string };
+
+  const createResponse = await call(db, '/api/products', 'POST', {
+    category: 'Laptops',
+    brand: 'Example',
+    model: 'Private-unit-test',
+    storage: '512GB SSD',
+    colour: 'Black',
+    priceInr: 50000,
+    conditionGrade: 'A',
+    conditionDescription: 'Test listing',
+    images: [],
+    units: [],
+  }, login.token, authConfig);
+  assert.equal(createResponse.status, 201);
+  const created = await createResponse.json() as { id: string };
+
+  const publicList = await call(db, '/api/products');
+  const publicCatalog = await publicList.json() as { products: Array<{ units: Array<Record<string, unknown>> }> };
+  assert.deepEqual(publicCatalog.products[0].units, [{ status: 'available', salePriceInr: 50000 }]);
+
+  const publicDetail = await call(db, `/api/products/${created.id}`);
+  const publicProduct = await publicDetail.json() as { units: Array<Record<string, unknown>> };
+  assert.deepEqual(publicProduct.units[0], { status: 'available', salePriceInr: 50000 });
+
+  const publicInventory = await call(db, `/api/products/${created.id}/inventory`);
+  assert.equal(publicInventory.status, 401);
+  const invalidOptionalToken = await call(db, '/api/products', 'GET', undefined, 'invalid-token', authConfig);
+  assert.equal(invalidOptionalToken.status, 401);
+  const invalidHealthToken = await call(db, '/api/health', 'GET', undefined, 'invalid-token', authConfig);
+  assert.equal(invalidHealthToken.status, 401);
+  for (const staffPath of ['/api/inventory', '/api/customers', '/api/reservations', '/api/sales', '/api/inspections']) {
+    const response = await call(db, staffPath);
+    assert.equal(response.status, 401, `${staffPath} should require staff authentication`);
+  }
+
+  const staffInventory = await call(db, `/api/products/${created.id}/inventory`, 'GET', undefined, login.token, authConfig);
+  assert.equal(staffInventory.status, 200);
+  const staffUnits = await staffInventory.json() as Array<{ id: string; stockTag: string }>;
+  assert.ok(staffUnits[0]?.id);
+  assert.ok(staffUnits[0]?.stockTag);
+});
+
+test('Cloudflare image uploads fail closed for unauthorized and unprocessable files', async () => {
+  const db = new MemoryD1();
+  const loginResponse = await call(db, '/api/auth/login', 'POST', {
+    email: authConfig.MBPC_ADMIN_EMAIL,
+    password: authConfig.MBPC_ADMIN_PASSWORD,
+  }, undefined, authConfig);
+  const login = await loginResponse.json() as { token: string };
+  let storedObjects = 0;
+  const r2 = {
+    get: async () => null,
+    put: async () => { storedObjects += 1; },
+    delete: async () => undefined,
+  };
+  const unauthenticated = await onRequest({
+    request: makeUploadRequest(undefined, new Uint8Array(), 'image/png', 'image.png'),
+    env: { DB: db, R2: r2, ...authConfig },
+  });
+  assert.equal(unauthenticated.status, 401);
+
+  const files = [
+    { bytes: new TextEncoder().encode('<script>alert(1)</script>'), type: 'image/png', name: 'spoofed.png' },
+    { bytes: new Uint8Array(5 * 1024 * 1024 + 1), type: 'image/jpeg', name: 'oversized.jpg' },
+    { bytes: new Uint8Array([0xff, 0xd8, 0xff, 0x00]), type: 'image/jpeg', name: 'corrupt.jpg' },
+    { bytes: new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"></svg>'), type: 'image/svg+xml', name: 'active.svg' },
+  ];
+
+  for (const file of files) {
+    const response = await onRequest({
+      request: makeUploadRequest(login.token, file.bytes, file.type, file.name),
+      env: { DB: db, R2: r2, ...authConfig },
+    });
+    assert.equal(response.status, 503);
+  }
+  assert.equal(storedObjects, 0);
+});
 
 test('Pages API starts with an empty My Budget PC catalogue', async () => {
   const db = new MemoryD1();

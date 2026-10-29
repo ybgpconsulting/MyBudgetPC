@@ -1,5 +1,6 @@
 import { PhoneItem } from '../types';
 import { SITE_CONFIG } from '../config/siteConfig';
+import { resolveImageUrl } from '../api/client';
 
 interface SeoConfig {
   title?: string;
@@ -52,7 +53,7 @@ export function updateMetaTags(config: SeoConfig) {
     '@context': 'https://schema.org',
     '@type': 'Product',
     name: `${product.brand} ${product.model}`,
-    image: product.images.length > 0 ? product.images : ['/product-placeholder.svg'],
+    image: product.images.length > 0 ? product.images.map(image => resolveImageUrl(image)) : ['/product-placeholder.svg'],
     description: product.conditionDescription || `${product.brand} ${product.model} product listing.`,
     sku: product.stockTag || product.id,
     brand: { '@type': 'Brand', name: product.brand },

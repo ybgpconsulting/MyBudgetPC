@@ -5,6 +5,7 @@ import {
   ShoppingBag, SlidersHorizontal, Trash2, Truck, X,
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
+import { resolveImageUrl } from '../../api/client';
 import { PhoneItem } from '../../types';
 import { SITE_CONFIG, formatINR } from '../../config/siteConfig';
 import {
@@ -37,7 +38,7 @@ function availableQuantity(product: PhoneItem): number {
 
 function ProductImage({ product, className = '' }: { product: PhoneItem; className?: string }) {
   const [failed, setFailed] = useState(false);
-  const image = !failed ? product.images[0] : '/product-placeholder.svg';
+  const image = !failed ? resolveImageUrl(product.images[0] || '') : '/product-placeholder.svg';
 
   return (
     <img
@@ -91,6 +92,13 @@ export const Storefront: React.FC = () => {
     phones, filters, setFilters, activeView, activeDetailId, setActiveView,
     loading, apiError, refreshPhones, isDemoCatalog,
   } = useInventory();
+  const publicStoreLocation = [
+    SITE_CONFIG.location.addressLine1,
+    SITE_CONFIG.location.area,
+    SITE_CONFIG.location.city,
+    SITE_CONFIG.location.state,
+    SITE_CONFIG.location.pincode,
+  ].filter(Boolean).join(', ');
   const [cart, setCart] = useState<CartLine[]>(() => {
     try {
       return loadCart();
@@ -693,9 +701,20 @@ export const Storefront: React.FC = () => {
           <div className="mbpc-footer-links"><strong>Explore</strong><button type="button" onClick={navigateHome}>Home</button><button type="button" onClick={() => navigateCatalog()}>All products</button><button type="button" onClick={() => setActiveView('login')}>Staff sign in</button></div>
           <div className="mbpc-footer-contact">
             <strong>Contact & visit</strong>
-            <a href={`tel:${SITE_CONFIG.callingNumber}`}><Phone size={15} aria-hidden="true" />{SITE_CONFIG.displayPhone}</a>
-            <span><MapPin size={15} aria-hidden="true" />{[SITE_CONFIG.location.area, SITE_CONFIG.location.city].filter(Boolean).join(', ')}</span>
-            <a href={SITE_CONFIG.location.googleMapsSearchUrl} target="_blank" rel="noopener noreferrer">View area in Google Maps <ArrowRight size={14} aria-hidden="true" /></a>
+            {SITE_CONFIG.callingNumber && (
+              <a href={`tel:${SITE_CONFIG.callingNumber}`}><Phone size={15} aria-hidden="true" />{SITE_CONFIG.displayPhone}</a>
+            )}
+            {publicStoreLocation && (
+              <span><MapPin size={15} aria-hidden="true" />{publicStoreLocation}</span>
+            )}
+            {SITE_CONFIG.location.googleMapsSearchUrl && (
+              <a href={SITE_CONFIG.location.googleMapsSearchUrl} target="_blank" rel="noopener noreferrer">
+                View location in Google Maps <ArrowRight size={14} aria-hidden="true" />
+              </a>
+            )}
+            {!SITE_CONFIG.callingNumber && !publicStoreLocation && !SITE_CONFIG.location.googleMapsSearchUrl && (
+              <span>Contact details will be published after the store confirms them.</span>
+            )}
           </div>
           <div className="mbpc-footer-note"><strong>Before you enquire</strong><p>Availability, delivery options, charges and final pricing are confirmed by the store. A WhatsApp message is not an order confirmation.</p></div>
         </div>

@@ -3,7 +3,9 @@ import jwt from 'jsonwebtoken';
 import { pool } from '../db';
 
 const jwtSecret = process.env.JWT_SECRET;
-if (!jwtSecret) throw new Error('JWT_SECRET is required');
+if (!jwtSecret || Buffer.byteLength(jwtSecret, 'utf8') < 32) {
+  throw new Error('JWT_SECRET must be configured with at least 32 bytes.');
+}
 
 export interface AuthUser {
   id: string;
