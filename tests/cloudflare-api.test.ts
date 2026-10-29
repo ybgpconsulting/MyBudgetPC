@@ -337,6 +337,83 @@ test('Pages API reports when its independent D1 binding is missing', async () =>
   assert.match(body.error, /D1 database is not configured/);
 });
 
+test('Pages API returns HTTP 503 for catalogue requests when DB binding is missing', async () => {
+  const response = await onRequest({
+    request: makeRequest('/api/products?page=1&limit=1'),
+    env: {},
+  });
+  assert.match(response.headers.get('content-type') || '', /^application\/json/);
+  assert.equal(response.status, 503);
+  const body = await response.json() as { error: string };
+  assert.match(body.error, /Cloudflare D1 database is not configured/);
+});
+
+test('Pages API returns valid JSON and pagination metadata across pages', async () => {
+  const db = new MemoryD1();
+  const loginResponse = await call(db, '/api/auth/login', 'POST', {
+    email: authConfig.MBPC_ADMIN_EMAIL,
+    password: authConfig.MBPC_ADMIN_PASSWORD,
+  }, undefined, authConfig);
+  const login = await loginResponse.json() as { token: string };
+
+  for (const index of [1, 2, 3]) {
+    await call(db, '/api/products', 'POST', {
+      category: 'Desktops',
+      brand: `Brand-${index}`,
+      model: `PC-Model-${index}`,
+      storage: '1TB NVMe',
+      colour: 'Black',
+      priceInr: 30000 + index * 5000,
+      conditionGrade: 'A',
+      conditionDescription: `Unit ${index}`,
+      images: [],
+      units: [],
+    }, login.token, authConfig);
+  }
+
+  const page1Response = await call(db, '/api/products?page=1&limit=2');
+  assert.equal(page1Response.status, 200);
+  assert.match(page1Response.headers.get('content-type') || '', /^application\/json/);
+  const page1 = await page1Response.json() as {
+    products: Array<{ brand: string; units: Array<Record<string, unknown>> }>;
+    total: number;
+    page: number;
+    limit: number;
+    pages: number;
+  };
+  assert.equal(page1.total, 3);
+  assert.equal(page1.page, 1);
+  assert.equal(page1.limit, 2);
+  assert.equal(page1.pages, 2);
+  assert.equal(page1.products.length, 2);
+
+  // Verify public serialization does not expose staff-only unit details
+  for (const prod of page1.products) {
+    for (const unit of prod.units) {
+      assert.equal('id' in unit, false, 'unit id must not be exposed');
+      assert.equal('stockTag' in unit, false, 'stockTag must not be exposed');
+      assert.equal('productId' in unit, false, 'productId must not be exposed');
+      assert.equal('createdAt' in unit, false, 'createdAt must not be exposed');
+      assert.equal('updatedAt' in unit, false, 'updatedAt must not be exposed');
+    }
+  }
+
+  const page2Response = await call(db, '/api/products?page=2&limit=2');
+  assert.equal(page2Response.status, 200);
+  const page2 = await page2Response.json() as {
+    products: Array<{ brand: string }>;
+    total: number;
+    page: number;
+    limit: number;
+    pages: number;
+  };
+  assert.equal(page2.total, 3);
+  assert.equal(page2.page, 2);
+  assert.equal(page2.limit, 2);
+  assert.equal(page2.pages, 2);
+  assert.equal(page2.products.length, 1);
+});
+
 test('Pages API health verifies connectivity through a configured D1 binding', async () => {
   const response = await call(new MemoryD1(), '/api/health');
 
