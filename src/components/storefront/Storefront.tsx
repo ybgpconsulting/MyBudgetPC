@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowDownUp, ArrowLeft, ArrowRight, Check, ChevronDown, Cpu, HardDrive,
+  ArrowDownUp, ArrowLeft, ArrowRight, BadgeCheck, Check, ChevronDown, Cpu, HardDrive,
   Laptop, MapPin, Monitor, Mouse, PackageCheck, Phone, Plus, Search, ShieldCheck,
-  ShoppingBag, SlidersHorizontal, Trash2, Truck, X,
+  ShoppingBag, SlidersHorizontal, Sparkles, Trash2, Truck, X, Zap,
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
 import { resolveImageUrl } from '../../api/client';
@@ -336,28 +336,56 @@ export const Storefront: React.FC = () => {
           aria-label={`View ${product.brand} ${product.model}`}
         >
           <ProductImage product={product} className="h-full w-full object-contain" />
-          {isDemoCatalog
-            ? <span className="mbpc-product-badge mbpc-demo-product-badge">Demo sample</span>
-            : product.featured && <span className="mbpc-product-badge">Featured</span>}
+          <div className="mbpc-badge-stack">
+            {isDemoCatalog ? (
+              <span className="mbpc-product-badge mbpc-demo-product-badge">Demo sample</span>
+            ) : (
+              <>
+                {product.featured && <span className="mbpc-product-badge mbpc-badge-featured">Featured</span>}
+                {product.priceDrop && <span className="mbpc-product-badge mbpc-badge-pricedrop">Price drop</span>}
+              </>
+            )}
+          </div>
         </a>
         <div className="mbpc-product-body">
-          <p className="mbpc-product-category">{product.category || 'Computer equipment'}</p>
+          <div className="mbpc-product-meta-row">
+            <p className="mbpc-product-category">{product.category || 'Computer equipment'}</p>
+            <span className="mbpc-condition-chip">{getConditionGradeLabel(product.condition)}</span>
+          </div>
           <a className="mbpc-product-name" href={buildStorePath('detail', product.id)} onClick={(event) => navigateFromLink(event, 'detail', product.id)}>
             {product.brand} {product.model}
           </a>
-          <span className="mbpc-condition-chip">{getConditionGradeLabel(product.condition)}</span>
           <p className="mbpc-product-variant">{getProductVariant(product)}</p>
-          <div className="mbpc-product-price">
-            {isDemoCatalog
-              ? <><span className="mbpc-demo-price-label">Demo estimate</span> {formatINR(product.price)}</>
-              : product.price > 0 ? formatINR(product.price) : <span className="mbpc-price-pending">Price on request</span>}
+          {(product.processor || product.ram || (product.storage && product.storage !== 'N/A')) && (
+            <div className="mbpc-spec-chips" aria-label="Key specifications">
+              {product.processor && <span className="mbpc-spec-chip" title={product.processor}>{product.processor}</span>}
+              {product.ram && <span className="mbpc-spec-chip">{product.ram}</span>}
+              {product.storage && product.storage !== 'N/A' && <span className="mbpc-spec-chip">{product.storage}</span>}
+            </div>
+          )}
+          <div className="mbpc-product-price-row">
+            <div className="mbpc-product-price">
+              {isDemoCatalog ? (
+                <><span className="mbpc-demo-price-label">Demo estimate</span> {formatINR(product.price)}</>
+              ) : product.price > 0 ? (
+                <>
+                  <span>{formatINR(product.price)}</span>
+                  {product.originalMsp && product.originalMsp > product.price && (
+                    <del className="mbpc-price-msp">{formatINR(product.originalMsp)}</del>
+                  )}
+                </>
+              ) : (
+                <span className="mbpc-price-pending">Price on request</span>
+              )}
+            </div>
+            <p className={`mbpc-stock ${stock > 0 ? 'is-available' : 'is-unavailable'}`}>
+              <span className="mbpc-stock-dot" aria-hidden="true" />
+              {isDemoCatalog ? 'Sample quantity only · no live stock' : getAvailabilityLabel(product)}
+            </p>
           </div>
-          <p className={`mbpc-stock ${stock > 0 ? 'is-available' : 'is-unavailable'}`}>
-            {isDemoCatalog ? 'Sample quantity only · no live stock' : getAvailabilityLabel(product)}
-          </p>
           <div className="mbpc-product-actions">
             <button type="button" className="mbpc-button mbpc-button-primary" onClick={() => addToCart(product)} disabled={isDemoCatalog || stock < 1}>
-              <ShoppingBag size={16} aria-hidden="true" /> {isDemoCatalog ? 'Demo only' : 'Add to enquiry'}
+              <ShoppingBag size={15} aria-hidden="true" /> {isDemoCatalog ? 'Demo only' : 'Add to enquiry'}
             </button>
             {whatsappUrl
               ? <a className="mbpc-button mbpc-button-secondary" href={whatsappUrl} target="_blank" rel="noopener noreferrer">Ask on WhatsApp</a>
@@ -440,7 +468,7 @@ export const Storefront: React.FC = () => {
       </div>
       {visibleProducts.length > 0
         ? <section className="mbpc-product-grid" aria-live="polite">{productCards(visibleProducts)}</section>
-        : apiError || loading
+        : apiError || loading || phones.length === 0
           ? <EmptyState loading={loading} apiError={apiError} onRetry={refreshPhones} onClear={() => navigateCatalog()} />
           : <section className="mbpc-empty-state" aria-live="polite">
             <Search size={38} aria-hidden="true" />
@@ -656,7 +684,15 @@ export const Storefront: React.FC = () => {
   return (
     <div className="mbpc-app">
       <a className="mbpc-skip-link" href="#main-content">Skip to content</a>
-      <div className="mbpc-topbar"><div>Refurbished computers and components. Direct enquiries. No online payment.</div></div>
+      <div className="mbpc-topbar">
+        <div className="mbpc-topbar-inner">
+          <span>✦ Refurbished computers & components</span>
+          <span className="mbpc-topbar-sep">•</span>
+          <span>Direct WhatsApp enquiries</span>
+          <span className="mbpc-topbar-sep">•</span>
+          <span>No online payment required</span>
+        </div>
+      </div>
       <header ref={headerRef} className={`mbpc-header${headerHidden ? ' is-scroll-hidden' : ''}`}>
         <div className="mbpc-header-inner">
           <Logo onClick={navigateHome} />
@@ -692,16 +728,33 @@ export const Storefront: React.FC = () => {
           <>
             <section className="mbpc-hero">
               <div className="mbpc-hero-copy">
-                <span className="mbpc-hero-kicker"><span aria-hidden="true" /> Refurbished computers & components</span>
-                <h1>Refurbished tech.<br /><span>Clear choices.</span></h1>
-                <p>Browse refurbished laptops, desktops, components and peripherals. Compare each listing’s configuration and condition grade, then ask the store to confirm availability and final pricing.</p>
+                <span className="mbpc-hero-kicker">
+                  <Sparkles size={13} aria-hidden="true" />
+                  <span>Refurbished computers & components</span>
+                </span>
+                <h1>Refurbished tech.<br /><span>Engineered for performance.</span></h1>
+                <p>Browse rigorously inspected laptops, desktops, components and peripherals. Compare transparent condition grades and verified specs, then enquire directly with our store team on WhatsApp.</p>
                 <div className="mbpc-hero-actions">
-                  <button type="button" className="mbpc-button mbpc-button-light" onClick={() => navigateCatalog()}>Explore the catalogue <ArrowRight size={17} /></button>
-                  <span><ShieldCheck size={16} /> No online payment required</span>
+                  <button type="button" className="mbpc-button mbpc-button-light" onClick={() => navigateCatalog()}>
+                    Explore the catalogue <ArrowRight size={17} />
+                  </button>
+                  <span className="mbpc-hero-guarantee"><ShieldCheck size={16} /> No online payment required</span>
+                </div>
+                <div className="mbpc-hero-trust-pills">
+                  <span><BadgeCheck size={13} /> 40-Point Diagnostics</span>
+                  <span><Zap size={13} /> Verified Thermals & Battery</span>
+                  <span><Check size={13} /> Honest Grading</span>
                 </div>
               </div>
               <div className="mbpc-hero-art" aria-label="Laptop computer on a desk">
                 <img src="https://images.unsplash.com/photo-1496181133206-80ce9b88a853?auto=format&fit=crop&w=1400&q=85" alt="Laptop computer on a desk" />
+                <div className="mbpc-hero-floating-badge">
+                  <span className="mbpc-pulse-dot" />
+                  <div>
+                    <strong>Verified Hardware</strong>
+                    <small>Tested & ready for dispatch</small>
+                  </div>
+                </div>
                 <div className="mbpc-hero-art-caption"><span>MY BUDGET PC</span><strong>Build around what matters.</strong></div>
               </div>
               <div className="mbpc-hero-footnote">Product information and pricing are confirmed directly with the store.</div>
@@ -709,16 +762,16 @@ export const Storefront: React.FC = () => {
 
             <section className="mbpc-trust-row" aria-label="Shopping information">
               <div className="mbpc-trust-item">
-                <span><ShieldCheck size={19} aria-hidden="true" /></span>
-                <div><strong>Know the condition</strong><small>Every listing includes a condition grade.</small></div>
+                <span className="mbpc-trust-icon"><ShieldCheck size={20} aria-hidden="true" /></span>
+                <div><strong>Know the condition</strong><small>Every listing includes an honest condition grade.</small></div>
               </div>
               <div className="mbpc-trust-item">
-                <span><PackageCheck size={19} aria-hidden="true" /></span>
-                <div><strong>Check current availability</strong><small>Confirm stock directly with the store.</small></div>
+                <span className="mbpc-trust-icon"><PackageCheck size={20} aria-hidden="true" /></span>
+                <div><strong>Check current availability</strong><small>Confirm live stock and specs directly with the store.</small></div>
               </div>
               <div className="mbpc-trust-item">
-                <span><Phone size={18} aria-hidden="true" /></span>
-                <div><strong>Enquire with confidence</strong><small>Get the details before you decide.</small></div>
+                <span className="mbpc-trust-icon"><Phone size={20} aria-hidden="true" /></span>
+                <div><strong>Enquire with confidence</strong><small>Get answers on WhatsApp before you decide.</small></div>
               </div>
             </section>
 

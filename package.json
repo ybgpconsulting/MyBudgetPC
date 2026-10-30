@@ -11,6 +11,7 @@
     "build": "vite build && node scripts/generate-sitemap.mjs",
     "cloudflare:preflight": "node scripts/cloudflare-preflight.mjs",
     "cloudflare:preview-preflight": "node scripts/cloudflare-preflight.mjs wrangler.jsonc --preview",
+    "cloudflare:secrets": "node scripts/configure-cloudflare-secrets.mjs",
     "cloudflare:dry-run": "npm run cloudflare:preflight && npm run build && wrangler deploy --dry-run",
     "deploy": "npm run cloudflare:preflight && npm run build && wrangler deploy",
     "deploy:preview": "npm run cloudflare:preview-preflight && npm run build && wrangler deploy",

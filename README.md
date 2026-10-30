@@ -87,7 +87,7 @@ The deployment commands run a local preflight first. Production deployment fails
 
 1. Before production, reconfirm the intended Cloudflare account and the `DB` binding in `wrangler.jsonc`; never bind an unrelated database or copy another business's ID.
 2. Verify the remote schema with `wrangler d1 execute mybudgetpc --remote --command "SELECT name FROM sqlite_master WHERE type='table';"`.
-3. Configure `MBPC_AUTH_SECRET` (minimum 32 characters), `MBPC_ADMIN_EMAIL`, and `MBPC_ADMIN_PASSWORD` (minimum 12 characters) as Worker secrets. Sales access is enabled only when both `MBPC_SALES_EMAIL` and `MBPC_SALES_PASSWORD` (minimum 12 characters) are configured. Never put these values in `wrangler.jsonc` or a `VITE_` variable.
+3. Configure `MBPC_AUTH_SECRET` (minimum 32 characters), `MBPC_ADMIN_EMAIL`, and `MBPC_ADMIN_PASSWORD` (minimum 12 characters) as Worker secrets using `npm run cloudflare:secrets` (or manual `wrangler secret put`). Sales access is enabled only when both `MBPC_SALES_EMAIL` and `MBPC_SALES_PASSWORD` (minimum 12 characters) are configured. Never put these values in `wrangler.jsonc` or a `VITE_` variable.
 4. Configure the intended Worker route/custom domain and set `VITE_SITE_URL` to that production HTTPS origin in the build environment.
 5. Run `npm run cloudflare:preflight`, then `npm run cloudflare:dry-run` to bundle and inspect Worker bindings without publishing. After verifying account, secrets, database schema, domain, and release approval, deploy intentionally with `npm run deploy`. `npm run deploy:preview` is for temporary workers.dev previews only.
 6. Bind an independent R2 bucket as `R2` only if the deployment needs to serve existing verified image objects. Worker uploads remain disabled.

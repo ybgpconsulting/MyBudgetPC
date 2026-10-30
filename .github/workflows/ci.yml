@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, 'fix/**', 'audit/**' ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter (typecheck)
+        run: npm run lint
+
+      - name: Run test suite
+        run: npm test
+
+      - name: Verify build output
+        run: npm run build
+
+      - name: Verify Cloudflare preview preflight
+        run: npm run cloudflare:preview-preflight
+
+      - name: Check git diff for whitespace or conflict markers
+        run: git diff --check
+
