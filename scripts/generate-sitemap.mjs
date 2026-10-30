@@ -24,7 +24,16 @@ if (siteUrl.username || siteUrl.password || siteUrl.pathname !== '/' || siteUrl.
 }
 
 const origin = siteUrl.origin;
-const routes = ['/', '/catalog'];
+const routes = [
+  '/',
+  '/shop',
+  '/shop/laptops',
+  '/shop/desktop-computers',
+  '/shop/custom-pc-builds',
+  '/shop/components',
+  '/shop/monitors',
+  '/shop/accessories',
+];
 const urls = routes.map((route) => `  <url><loc>${origin}${route}</loc></url>`).join('\n');
 const sitemap = [
   '<?xml version="1.0" encoding="UTF-8"?>',
@@ -35,4 +44,4 @@ const sitemap = [
 ].join('\n');
 
 await writeFile('dist/sitemap.xml', sitemap, 'utf8');
-await writeFile('dist/robots.txt', `User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /admin\nDisallow: /sales\nDisallow: /login\nDisallow: /checkout\nSitemap: ${origin}/sitemap.xml\n`, 'utf8');
+await writeFile('dist/robots.txt', `User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /admin\nDisallow: /sales\nDisallow: /login\nDisallow: /checkout\nDisallow: /enquiry\nSitemap: ${origin}/sitemap.xml\n`, 'utf8');

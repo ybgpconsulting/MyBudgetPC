@@ -152,6 +152,7 @@ export interface ApiInventoryUnit {
   id: string;
   productId: string;
   stockTag: string;
+  imei?: string | null;
   status: 'available' | 'reserved' | 'sold' | 'retired';
   salePriceInr: number | null;
   createdAt: string;

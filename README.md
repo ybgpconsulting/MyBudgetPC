@@ -13,7 +13,7 @@ The PostgreSQL and Cloudflare configurations are independent. Provision new My B
 
 ## Local development with PostgreSQL
 
-1. Install the locked dependencies with `npm install`.
+1. Use Node.js 22 or newer and install the locked dependencies with `npm install`.
 2. Copy `.env.example` to `.env`. Set a local PostgreSQL `DATABASE_URL`, unique admin and sales email addresses, bootstrap passwords of at least 12 characters, and a random `JWT_SECRET` of at least 32 bytes. Keep `.env` private.
 3. Start PostgreSQL and run `npm run db:migrate`.
 4. Run `npm run db:seed` once to bootstrap the staff accounts. This command updates the configured accounts' password hashes when re-run; do not re-run it unintentionally against a live database. The product seed file is intentionally empty.
@@ -62,7 +62,7 @@ The owner identifies IQD Technologies as the same business under a different sto
 
 ## Catalogue, enquiries, and inventory
 
-Live catalogue data comes from the selected backend. Admin and sales workflows manage product listings, configuration, condition, images, and inventory. The storefront supports catalogue pagination, search, filters, product details, local cart persistence, quantities bounded by available stock, and an enquiry review step. It displays only recorded prices and product facts and asks the customer to confirm availability and final pricing. Opening WhatsApp does not clear the cart.
+Live catalogue data comes from the selected backend. Admin and sales workflows manage product listings, configuration, condition, images, and inventory. The storefront uses shareable routes for `/`, `/shop`, `/shop/:category`, `/product/:id`, `/enquiry`, and `/login`; category and product links remain directly loadable and work with browser back/forward navigation. The catalogue supports pagination, search, filters, local cart persistence, quantities bounded by available stock, and an enquiry review step. It displays only recorded prices and product facts and asks the customer to confirm availability and final pricing. Opening WhatsApp does not clear the cart.
 
 Anonymous product responses omit inventory-unit IDs, unit stock tags, inspection data, and other staff-only fields in both Express and Cloudflare APIs. Inventory-unit endpoints and customer, sales, reservation, and inspection operations require staff authorization. Invalid supplied bearer tokens are rejected rather than downgraded to anonymous access.
 
@@ -81,19 +81,22 @@ Run `npm run db:migrate` to apply the numbered SQL migrations. The local `npm ru
 
 ## Cloudflare setup
 
-The active `npm run deploy` command publishes a Worker with Assets. The checked-in `wrangler.jsonc` does not declare a D1 binding, and the authenticated account inventory checked for this deployment did not identify a MyBudgetPC database. The owner/operator must confirm an existing database's exact name and ID and add the `DB` binding before deploying the Worker API; do not bind an unrelated database, create a replacement, or copy another business's ID. The separate `deploy:pages` script uses `wrangler.pages.jsonc` and is not the active deployment path.
+The active `npm run deploy` command publishes a Worker with Assets. The checked-in `wrangler.jsonc` does not declare a D1 binding, and the authenticated account inventory checked for this deployment did not identify a MyBudgetPC database. The owner/operator must confirm the intended database's exact name and ID and add the `DB` binding before deploying the Worker API; do not bind an unrelated database, create a replacement, or copy another business's ID. The separate `deploy:pages` script uses `wrangler.pages.jsonc` and is not the active deployment path. Wrangler is pinned in the lockfile and deployment requires Node.js 22 or newer.
 
-1. Confirm the existing D1 database intended for My Budget PC, verify its exact name and ID in the intended Cloudflare account, and add a `d1_databases` entry bound as `DB` to `wrangler.jsonc`.
-2. Apply the schema to that verified database with `npx wrangler d1 execute YOUR_VERIFIED_DATABASE_NAME --remote --file=db/my-budget-pc-state.sql`.
-3. Set `MBPC_AUTH_SECRET` (minimum 32 characters), `MBPC_ADMIN_EMAIL`, and `MBPC_ADMIN_PASSWORD` (minimum 12 characters) using `wrangler secret put`. Sales access is enabled only when both `MBPC_SALES_EMAIL` and `MBPC_SALES_PASSWORD` (minimum 12 characters) are configured.
-4. Bind an independent R2 bucket as `R2` only if the deployment needs to serve existing verified image objects. Worker uploads remain disabled.
-5. Set the public `VITE_*` build variables in the deployment's build environment, run `npm run build`, then deploy intentionally using `npm run deploy`.
+The deployment commands run a local preflight first. It fails unless the selected config has the expected static output and API routing, a valid `DB` binding, a production HTTPS `VITE_SITE_URL`, and no demo-catalogue build flag. The preflight does not contact Cloudflare and cannot verify live secrets, the remote D1 schema, a custom-domain route, backups, or account selection.
 
-Do not run deployment commands as part of local verification. Confirm the selected production environment, bindings, secrets, access policies, backups, and custom domain before deploying.
+1. Confirm the intended D1 database and Cloudflare account; add its verified `database_name` and `database_id` in a `d1_databases` entry bound as `DB` in `wrangler.jsonc`.
+2. Apply the schema to that verified database with `wrangler d1 execute YOUR_VERIFIED_DATABASE_NAME --remote --file=db/my-budget-pc-state.sql`.
+3. Configure `MBPC_AUTH_SECRET` (minimum 32 characters), `MBPC_ADMIN_EMAIL`, and `MBPC_ADMIN_PASSWORD` (minimum 12 characters) as Worker secrets. Sales access is enabled only when both `MBPC_SALES_EMAIL` and `MBPC_SALES_PASSWORD` (minimum 12 characters) are configured. Never put these values in `wrangler.jsonc` or a `VITE_` variable.
+4. Configure the intended Worker route/custom domain, or confirm that the workers.dev address is the intended public host. Set `VITE_SITE_URL` to that production HTTPS origin in the build environment.
+5. Run `npm run cloudflare:preflight`, then `npm run cloudflare:dry-run` to bundle and inspect Worker bindings without publishing. After verifying account, secrets, database schema, domain, and release approval, deploy intentionally with `npm run deploy`.
+6. Bind an independent R2 bucket as `R2` only if the deployment needs to serve existing verified image objects. Worker uploads remain disabled.
+
+Do not run `npm run deploy` as part of local verification. Use the dry run for local bundle checks, and confirm the selected production environment, bindings, secrets, access policies, backups, and public domain before publishing.
 
 ### D1 storage limitation
 
-The Cloudflare adapter keeps the catalogue, reservations, sales, and customer state in one JSON value in one D1 row. Each write reads and rewrites that whole value and uses a revision check; concurrent writes can return HTTP 409 and require a retry. The record is capped below D1's row limit (900 KiB), and this design has no relational constraints or per-record transaction model. It is suitable only for a small, low-concurrency demonstration or evaluation—not for production customer records or sales. Use the PostgreSQL backend or plan a tested, backward-compatible normalized D1 migration before accepting real business data. No production data migration is performed by this project.
+The Cloudflare adapter keeps the catalogue, reservations, sales, and customer state in one JSON value in one D1 row. Each write reads and rewrites that whole value and uses a revision check; concurrent writes can return HTTP 409 and require a retry. The record is capped below D1's row limit (900 KiB), and this design has no relational constraints or per-record transaction model. This is not a production-ready data model for real inventory, customer records, reservations, or sales. Do not accept real business data until the D1 storage is replaced with a tested normalized model, or select the PostgreSQL backend. No production data migration is performed by this project.
 
 ## Checks and deployment readiness
 

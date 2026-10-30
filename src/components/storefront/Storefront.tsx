@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDownUp, ArrowLeft, ArrowRight, Check, ChevronDown, Cpu, HardDrive,
-  Laptop, MapPin, Menu, Monitor, Mouse, PackageCheck, Phone, Plus, Search, ShieldCheck,
+  Laptop, MapPin, Monitor, Mouse, PackageCheck, Phone, Plus, Search, ShieldCheck,
   ShoppingBag, SlidersHorizontal, Trash2, Truck, X,
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
@@ -13,6 +13,7 @@ import {
   getProductVariant, isValidEnquiryPhone, isValidIndianPinCode, loadCart,
 } from '../../utils/storefront';
 import { buildCartEnquiryMessage, buildProductEnquiryMessage, createWhatsAppUrl } from '../../utils/whatsapp';
+import { buildStorePath } from '../../utils/storeRoutes';
 
 const CATEGORY_TILES = [
   { name: 'Laptops', icon: Laptop, hint: 'Portable computers' },
@@ -53,13 +54,17 @@ function ProductImage({ product, className = '' }: { product: PhoneItem; classNa
 
 function Logo({ onClick }: { onClick: () => void }) {
   return (
-    <button className="mbpc-brand" type="button" onClick={onClick} aria-label="My Budget PC home">
+    <a className="mbpc-brand" href="/" onClick={(event) => {
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      onClick();
+    }} aria-label="My Budget PC home">
       <span className="mbpc-brand-mark" aria-hidden="true"><Cpu size={21} strokeWidth={2.2} /></span>
       <span className="mbpc-brand-type">
         <strong>my budget pc</strong>
         <small>COMPUTERS · COMPONENTS · MORE</small>
       </span>
-    </button>
+    </a>
   );
 }
 
@@ -108,11 +113,49 @@ export const Storefront: React.FC = () => {
   });
   const [cartStorageWarning, setCartStorageWarning] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [headerHidden, setHeaderHidden] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [customer, setCustomer] = useState(emptyCustomer);
   const [notice, setNotice] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
+  const headerRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    let previousY = window.scrollY;
+    let direction = 0;
+    let directionStartY = previousY;
+
+    const handleScroll = () => {
+      const currentY = Math.max(0, window.scrollY);
+      const delta = currentY - previousY;
+      previousY = currentY;
+
+      if (currentY <= 40) {
+        direction = 0;
+        directionStartY = currentY;
+        setHeaderHidden(false);
+        return;
+      }
+
+      if (delta === 0) return;
+      const nextDirection = delta > 0 ? 1 : -1;
+      if (nextDirection !== direction) {
+        direction = nextDirection;
+        directionStartY = currentY;
+      }
+      if (Math.abs(currentY - directionStartY) < 10) return;
+
+      directionStartY = currentY;
+      if (nextDirection < 0 || headerRef.current?.contains(document.activeElement)) {
+        setHeaderHidden(false);
+      } else {
+        setHeaderHidden(true);
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   useEffect(() => {
     try {
@@ -171,14 +214,29 @@ export const Storefront: React.FC = () => {
 
   const navigateHome = () => {
     setActiveView('home');
-    setMobileMenuOpen(false);
+  };
+
+  const setCatalogCategory = (category: string) => {
+    setFilters((previous) => ({ ...previous, category }));
+    setActiveView('stock', undefined, category);
   };
 
   const navigateCatalog = (category = 'All') => {
-    setFilters((previous) => ({ ...previous, category }));
-    setActiveView('stock');
-    setMobileMenuOpen(false);
+    setCatalogCategory(category);
     setCartOpen(false);
+  };
+
+  const navigateFromLink = (
+    event: React.MouseEvent<HTMLAnchorElement>,
+    view: string,
+    phoneId?: string,
+    category?: string,
+  ) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    setCartOpen(false);
+    if (view === 'stock') setFilters(previous => ({ ...previous, category: category || 'All' }));
+    setActiveView(view, phoneId, category);
   };
 
   const addToCart = (product: PhoneItem) => {
@@ -271,22 +329,22 @@ export const Storefront: React.FC = () => {
     const whatsappUrl = productWhatsAppUrl(product);
     return (
       <article key={product.id} className="mbpc-product-card">
-        <button
-          type="button"
+        <a
           className="mbpc-product-image"
-          onClick={() => setActiveView('detail', product.id)}
+          href={buildStorePath('detail', product.id)}
+          onClick={(event) => navigateFromLink(event, 'detail', product.id)}
           aria-label={`View ${product.brand} ${product.model}`}
         >
           <ProductImage product={product} className="h-full w-full object-contain" />
           {isDemoCatalog
             ? <span className="mbpc-product-badge mbpc-demo-product-badge">Demo sample</span>
             : product.featured && <span className="mbpc-product-badge">Featured</span>}
-        </button>
+        </a>
         <div className="mbpc-product-body">
           <p className="mbpc-product-category">{product.category || 'Computer equipment'}</p>
-          <button type="button" className="mbpc-product-name" onClick={() => setActiveView('detail', product.id)}>
+          <a className="mbpc-product-name" href={buildStorePath('detail', product.id)} onClick={(event) => navigateFromLink(event, 'detail', product.id)}>
             {product.brand} {product.model}
-          </button>
+          </a>
           <span className="mbpc-condition-chip">{getConditionGradeLabel(product.condition)}</span>
           <p className="mbpc-product-variant">{getProductVariant(product)}</p>
           <div className="mbpc-product-price">
@@ -375,9 +433,9 @@ export const Storefront: React.FC = () => {
         {loading ? 'Loading products…' : `${visibleProducts.length} ${visibleProducts.length === 1 ? 'product' : 'products'}${filters.searchQuery ? ` matching “${filters.searchQuery}”` : ''}`}
       </p>
       <div className="mbpc-category-pills" aria-label="Filter by category">
-        <button type="button" className={filters.category === 'All' ? 'is-selected' : ''} onClick={() => updateFilter('category', 'All')}>All products</button>
+        <button type="button" className={filters.category === 'All' ? 'is-selected' : ''} onClick={() => navigateCatalog()}>All products</button>
         {categories.map((category) => (
-          <button key={category} type="button" className={filters.category === category ? 'is-selected' : ''} onClick={() => updateFilter('category', category)}>{category}</button>
+          <button key={category} type="button" className={filters.category === category ? 'is-selected' : ''} onClick={() => setCatalogCategory(category)}>{category}</button>
         ))}
       </div>
       {visibleProducts.length > 0
@@ -597,15 +655,18 @@ export const Storefront: React.FC = () => {
 
   return (
     <div className="mbpc-app">
+      <a className="mbpc-skip-link" href="#main-content">Skip to content</a>
       <div className="mbpc-topbar"><div>Refurbished computers and components. Direct enquiries. No online payment.</div></div>
-      <header className="mbpc-header">
+      <header ref={headerRef} className={`mbpc-header${headerHidden ? ' is-scroll-hidden' : ''}`}>
         <div className="mbpc-header-inner">
           <Logo onClick={navigateHome} />
           <nav className="mbpc-desktop-nav" aria-label="Main navigation">
-            <button type="button" className={!isCatalog && !isDetail && !isCheckout ? 'is-active' : ''} onClick={navigateHome}>Home</button>
-            <button type="button" className={isCatalog ? 'is-active' : ''} onClick={() => navigateCatalog()}>Shop all</button>
-            <button type="button" onClick={() => navigateCatalog('Laptops')}>Laptops</button>
-            <button type="button" onClick={() => navigateCatalog('Components')}>Components</button>
+            <a href="/" className={activeView === 'home' ? 'is-active' : ''} aria-current={activeView === 'home' ? 'page' : undefined} onClick={(event) => navigateFromLink(event, 'home')}>Home</a>
+            <a href="/shop" className={isCatalog && filters.category === 'All' ? 'is-active' : ''} aria-current={isCatalog && filters.category === 'All' ? 'page' : undefined} onClick={(event) => navigateFromLink(event, 'stock')}>Shop all</a>
+            <a href={buildStorePath('stock', undefined, 'Laptops')} className={isCatalog && filters.category === 'Laptops' ? 'is-active' : ''} aria-current={isCatalog && filters.category === 'Laptops' ? 'page' : undefined} onClick={(event) => navigateFromLink(event, 'stock', undefined, 'Laptops')}>Laptops</a>
+            <a href={buildStorePath('stock', undefined, 'Desktop Computers')} className={isCatalog && filters.category === 'Desktop Computers' ? 'is-active' : ''} aria-current={isCatalog && filters.category === 'Desktop Computers' ? 'page' : undefined} onClick={(event) => navigateFromLink(event, 'stock', undefined, 'Desktop Computers')}>Desktops</a>
+            <a href={buildStorePath('stock', undefined, 'Components')} className={isCatalog && filters.category === 'Components' ? 'is-active' : ''} aria-current={isCatalog && filters.category === 'Components' ? 'page' : undefined} onClick={(event) => navigateFromLink(event, 'stock', undefined, 'Components')}>Components</a>
+            <a href="/enquiry" className={isCheckout ? 'is-active' : ''} aria-current={isCheckout ? 'page' : undefined} onClick={(event) => navigateFromLink(event, 'checkout')}>Enquiry</a>
           </nav>
           <div className="mbpc-header-actions">
             <button type="button" className="mbpc-header-search" onClick={() => {
@@ -616,23 +677,11 @@ export const Storefront: React.FC = () => {
               <ShoppingBag size={18} /><span className="mbpc-cart-trigger-text">Enquiry cart</span>
               <span className="mbpc-cart-count">{displayedCartCount}</span>
             </button>
-            <button type="button" className="mbpc-menu-trigger" onClick={() => setMobileMenuOpen((open) => !open)} aria-expanded={mobileMenuOpen} aria-label="Toggle menu">
-              {mobileMenuOpen ? <X size={21} /> : <Menu size={21} />}
-            </button>
           </div>
         </div>
-        {mobileMenuOpen && (
-          <nav className="mbpc-mobile-menu" aria-label="Mobile navigation">
-            <button type="button" onClick={navigateHome}>Home</button>
-            <button type="button" onClick={() => navigateCatalog()}>Shop all products</button>
-            <button type="button" onClick={() => navigateCatalog('Laptops')}>Laptops</button>
-            <button type="button" onClick={() => navigateCatalog('Components')}>Components</button>
-            <button type="button" onClick={() => { setCartOpen(true); setMobileMenuOpen(false); }}>Review enquiry cart ({displayedCartCount})</button>
-          </nav>
-        )}
       </header>
 
-      <main className="mbpc-main">
+      <main className="mbpc-main" id="main-content">
         {isDemoCatalog && (
           <aside className="mbpc-demo-banner" role="status">
             <strong>DEMO CATALOGUE</strong>
@@ -656,6 +705,21 @@ export const Storefront: React.FC = () => {
                 <div className="mbpc-hero-art-caption"><span>MY BUDGET PC</span><strong>Build around what matters.</strong></div>
               </div>
               <div className="mbpc-hero-footnote">Product information and pricing are confirmed directly with the store.</div>
+            </section>
+
+            <section className="mbpc-trust-row" aria-label="Shopping information">
+              <div className="mbpc-trust-item">
+                <span><ShieldCheck size={19} aria-hidden="true" /></span>
+                <div><strong>Know the condition</strong><small>Every listing includes a condition grade.</small></div>
+              </div>
+              <div className="mbpc-trust-item">
+                <span><PackageCheck size={19} aria-hidden="true" /></span>
+                <div><strong>Check current availability</strong><small>Confirm stock directly with the store.</small></div>
+              </div>
+              <div className="mbpc-trust-item">
+                <span><Phone size={18} aria-hidden="true" /></span>
+                <div><strong>Enquire with confidence</strong><small>Get the details before you decide.</small></div>
+              </div>
             </section>
 
             <section className="mbpc-section mbpc-categories">
@@ -719,11 +783,16 @@ export const Storefront: React.FC = () => {
           <div className="mbpc-footer-note"><strong>Before you enquire</strong><p>Availability, delivery options, charges and final pricing are confirmed by the store. A WhatsApp message is not an order confirmation.</p></div>
         </div>
         <div className="mbpc-footer-bottom">
-          <span>© {new Date().getFullYear()} {SITE_CONFIG.storeName}</span>
-          <a className="mbpc-footer-credit" href="https://ybgp.in/" target="_blank" rel="noopener noreferrer" aria-label="Designed and developed by YBGP, opens in a new tab">
-            <span>Designed &amp; developed by</span>
-            <img src="/YBGP_logo.png" alt="YBGP" loading="lazy" />
-          </a>
+          <small className="mbpc-footer-legal">© {new Date().getFullYear()} {SITE_CONFIG.storeName}. All rights reserved.</small>
+          <div className="mbpc-footer-ybgp">
+            <div className="mbpc-footer-credit-copy">
+              <strong>Looking to grow your business?</strong>
+              <span>Designed and developed by YBGP</span>
+            </div>
+            <a className="mbpc-footer-credit" href="https://ybgp.in/" target="_blank" rel="noopener noreferrer" aria-label="Visit YBGP, the team behind this website, opens in a new tab">
+              <img src="/YBGP_logo.png" alt="YBGP" loading="lazy" />
+            </a>
+          </div>
         </div>
       </footer>
 
@@ -758,7 +827,7 @@ export const Storefront: React.FC = () => {
         <div className="mbpc-overlay mbpc-filter-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) setFilterOpen(false); }}>
           <section className="mbpc-filter-sheet" role="dialog" aria-modal="true" aria-labelledby="filter-title">
             <div className="mbpc-drawer-header"><h2 id="filter-title">Filters</h2><button type="button" className="mbpc-icon-button" onClick={() => setFilterOpen(false)} aria-label="Close filters"><X size={20} /></button></div>
-            <label className="mbpc-filter-label">Category<select value={filters.category} onChange={(event) => updateFilter('category', event.target.value)}><option value="All">All categories</option>{categories.map((category) => <option key={category}>{category}</option>)}</select></label>
+            <label className="mbpc-filter-label">Category<select value={filters.category} onChange={(event) => setCatalogCategory(event.target.value)}><option value="All">All categories</option>{categories.map((category) => <option key={category}>{category}</option>)}</select></label>
             <label className="mbpc-filter-label">Brand<select value={filters.brand} onChange={(event) => updateFilter('brand', event.target.value)}><option value="All">All brands</option>{brands.map((brand) => <option key={brand} value={brand}>{brand}</option>)}</select></label>
             <label className="mbpc-filter-label">Condition grade<select value={filters.condition[0] || ''} onChange={(event) => updateConditionFilter(event.target.value)}><option value="">All grades</option><option value="A+">Grade A+</option><option value="A">Grade A</option><option value="B">Grade B</option><option value="C">Grade C</option></select></label>
             <div className="mbpc-price-filters"><label className="mbpc-filter-label">Minimum price<input type="number" min="0" step="1" value={filters.minPrice || ''} onChange={(event) => updateFilter('minPrice', Number(event.target.value) || 0)} /></label><label className="mbpc-filter-label">Maximum price<input type="number" min="0" step="1" value={filters.maxPrice === Number.MAX_SAFE_INTEGER ? '' : filters.maxPrice} placeholder="No limit" onChange={(event) => updateFilter('maxPrice', Number(event.target.value) || Number.MAX_SAFE_INTEGER)} /></label></div>

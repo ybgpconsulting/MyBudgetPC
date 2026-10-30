@@ -10,7 +10,7 @@ const AdminDashboard = lazy(() => import('./components/admin/AdminDashboard').th
 const SalesPortal = lazy(() => import('./components/sales/SalesPortal').then(({ SalesPortal: portal }) => ({ default: portal })));
 
 const AppContent: React.FC = () => {
-  const { activeView, activeDetailId, getPhoneById } = useInventory();
+  const { activeView, activeDetailId, filters, getPhoneById } = useInventory();
   const { user, loading: authLoading } = useAuth();
   const [pathname, setPathname] = useState(window.location.pathname);
   const isStaffRoute = ['/login', '/admin', '/sales'].some((path) => pathname.startsWith(path));
@@ -32,7 +32,7 @@ const AppContent: React.FC = () => {
           : activeView === 'checkout'
             ? `Review your enquiry${suffix}`
             : activeView === 'stock'
-            ? `Refurbished computer catalogue${suffix}`
+          ? `${filters.category !== 'All' ? `${filters.category} | ` : ''}Computer catalogue${suffix}`
               : `${SITE_CONFIG.storeName} | Refurbished Computers & Components`,
       description: product
         ? `${product.brand} ${product.model}. ${product.conditionDescription || 'View the product configuration and enquire about current availability and pricing.'}`
@@ -40,7 +40,7 @@ const AppContent: React.FC = () => {
       canonicalUrl: pathname,
       product: product || null,
     });
-  }, [activeDetailId, activeView, getPhoneById, isStaffRoute, pathname]);
+  }, [activeDetailId, activeView, filters.category, getPhoneById, isStaffRoute, pathname]);
 
   if (isStaffRoute) {
     if (authLoading) return <div className="mbpc-loading" role="status">Checking staff access…</div>;

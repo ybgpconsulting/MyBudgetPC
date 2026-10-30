@@ -177,6 +177,98 @@ test('Cloudflare image uploads fail closed for unauthorized and unprocessable fi
   assert.equal(storedObjects, 0);
 });
 
+test('Pages API preserves inventory units on product updates and filters any available unit', async () => {
+  const db = new MemoryD1();
+  const adminLoginResponse = await call(db, '/api/auth/login', 'POST', {
+    email: authConfig.MBPC_ADMIN_EMAIL,
+    password: authConfig.MBPC_ADMIN_PASSWORD,
+  }, undefined, authConfig);
+  const adminLogin = await adminLoginResponse.json() as { token: string };
+  const productResponse = await call(db, '/api/products', 'POST', {
+    category: 'Laptops',
+    brand: 'Example',
+    model: 'Multi-unit-test',
+    priceInr: 50000,
+    images: [],
+  }, adminLogin.token, authConfig);
+  const product = await productResponse.json() as { id: string; units: Array<{ id: string }> };
+  const firstUnitId = product.units[0].id;
+
+  const soldResponse = await call(db, `/api/inventory/${firstUnitId}/status`, 'PATCH', {
+    status: 'sold',
+  }, adminLogin.token, authConfig);
+  assert.equal(soldResponse.status, 200);
+
+  const inventoryResponse = await call(db, '/api/inventory', 'POST', {
+    productId: product.id,
+    stockTag: 'EXAMPLE-MULTI-UNIT-2',
+    imei: '123456789012345',
+    salePriceInr: 0,
+  }, adminLogin.token, authConfig);
+  assert.equal(inventoryResponse.status, 201);
+  const createdUnit = await inventoryResponse.json() as {
+    id: string;
+    productId: string;
+    stockTag: string;
+    status: string;
+  };
+  assert.equal(createdUnit.productId, product.id);
+  assert.equal(createdUnit.stockTag, 'EXAMPLE-MULTI-UNIT-2');
+  assert.equal(createdUnit.status, 'available');
+
+  const duplicateStockTag = await call(db, '/api/inventory', 'POST', {
+    productId: product.id,
+    stockTag: 'EXAMPLE-MULTI-UNIT-2',
+  }, adminLogin.token, authConfig);
+  assert.equal(duplicateStockTag.status, 409);
+
+  const invalidInventory = await call(db, '/api/inventory', 'POST', {
+    productId: product.id,
+    stockTag: '',
+    salePriceInr: -1,
+  }, adminLogin.token, authConfig);
+  assert.equal(invalidInventory.status, 400);
+
+  const salesLoginResponse = await call(db, '/api/auth/login', 'POST', {
+    email: authConfig.MBPC_SALES_EMAIL,
+    password: authConfig.MBPC_SALES_PASSWORD,
+  }, undefined, authConfig);
+  const salesLogin = await salesLoginResponse.json() as { token: string };
+  const salesCreateAttempt = await call(db, '/api/inventory', 'POST', {
+    productId: product.id,
+    stockTag: 'EXAMPLE-MULTI-UNIT-3',
+  }, salesLogin.token, authConfig);
+  assert.equal(salesCreateAttempt.status, 403);
+
+  const updateResponse = await call(db, `/api/products/${product.id}`, 'PATCH', {
+    model: 'Updated multi-unit test',
+    priceInr: 52000,
+  }, adminLogin.token, authConfig);
+  assert.equal(updateResponse.status, 200);
+
+  const unitsResponse = await call(db, `/api/products/${product.id}/inventory`, 'GET', undefined, adminLogin.token, authConfig);
+  const units = await unitsResponse.json() as Array<{
+    id: string;
+    status: string;
+    stockTag: string;
+    imei?: string;
+    salePriceInr: number | null;
+  }>;
+  assert.equal(unitsResponse.status, 200);
+  assert.deepEqual(units.map(unit => unit.id), [firstUnitId, createdUnit.id]);
+  assert.equal(units[0].status, 'sold');
+  assert.equal(units[1].status, 'available');
+  assert.equal(units[1].stockTag, 'EXAMPLE-MULTI-UNIT-2');
+  assert.equal(units[1].imei, '123456789012345');
+  assert.equal(units[1].salePriceInr, 0);
+
+  const availableProductsResponse = await call(db, '/api/products?availableOnly=true');
+  const availableProducts = await availableProductsResponse.json() as {
+    products: Array<{ id: string }>;
+  };
+  assert.ok(availableProducts.products.some(item => item.id === product.id));
+});
+
 test('Pages API starts with an empty My Budget PC catalogue', async () => {
   const db = new MemoryD1();
   const response = await call(db, '/api/products?page=1&limit=1');
