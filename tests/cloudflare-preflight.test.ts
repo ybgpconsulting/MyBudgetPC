@@ -4,6 +4,7 @@ import test from 'node:test';
 import { validateCloudflareLaunch } from '../scripts/cloudflare-preflight.mjs';
 
 const config = JSON.parse(await readFile(new URL('../wrangler.jsonc', import.meta.url), 'utf8'));
+const configWithoutD1 = { ...config, d1_databases: [] };
 const validConfig = {
   ...config,
   d1_databases: [{
@@ -19,7 +20,7 @@ test('Cloudflare preflight accepts complete Worker configuration', () => {
 });
 
 test('Cloudflare preflight blocks deployments without a verified D1 binding', () => {
-  const errors = validateCloudflareLaunch(config, validSiteUrl, 'false');
+  const errors = validateCloudflareLaunch(configWithoutD1, validSiteUrl, 'false');
 
   assert.ok(errors.some((error) => error.includes('verified My Budget PC D1 database')));
 });
@@ -29,6 +30,10 @@ test('Cloudflare preflight requires a production HTTPS origin', () => {
     assert.ok(validateCloudflareLaunch(validConfig, siteUrl, 'false')
       .some((error) => error.includes('VITE_SITE_URL')));
   }
+});
+
+test('Cloudflare preflight permits a workers.dev preview without a canonical origin', () => {
+  assert.deepEqual(validateCloudflareLaunch(validConfig, '', 'false', true), []);
 });
 
 test('Cloudflare preflight prevents demo catalogue builds', () => {

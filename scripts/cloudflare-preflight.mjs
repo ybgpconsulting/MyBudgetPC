@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-export function validateCloudflareLaunch(config, siteUrl, demoCatalog) {
+export function validateCloudflareLaunch(config, siteUrl, demoCatalog, preview = false) {
   const errors = [];
 
   const isPages = Boolean(config.pages_build_output_dir);
@@ -17,6 +17,9 @@ export function validateCloudflareLaunch(config, siteUrl, demoCatalog) {
     errors.push('Do not put secrets in Wrangler vars; configure them with the Cloudflare secrets command.');
   }
   if (isPages) {
+    if (preview) {
+      errors.push('Temporary workers.dev preview is available only for the Workers deployment.');
+    }
     if (config.pages_build_output_dir !== './dist') {
       errors.push('Cloudflare Pages must publish the ./dist build output.');
     }
@@ -26,6 +29,9 @@ export function validateCloudflareLaunch(config, siteUrl, demoCatalog) {
     }
     if (config.workers_dev !== true && !config.route && !config.routes?.length) {
       errors.push('Configure a Worker route or enable workers.dev so the deployed Worker is reachable.');
+    }
+    if (preview && config.workers_dev !== true) {
+      errors.push('Enable workers.dev in Wrangler config for a temporary preview deployment.');
     }
     if (config.assets?.directory !== './dist' || config.assets?.binding !== 'ASSETS') {
       errors.push('Worker static assets must use ./dist and the ASSETS binding.');
@@ -48,9 +54,9 @@ export function validateCloudflareLaunch(config, siteUrl, demoCatalog) {
     }
   }
 
-  if (!siteUrl) {
+  if (!siteUrl && !preview) {
     errors.push('Set VITE_SITE_URL to the production site origin before building.');
-  } else {
+  } else if (siteUrl) {
     try {
       const url = new URL(siteUrl);
       if (url.protocol !== 'https:' || url.username || url.password || url.pathname !== '/'
@@ -82,10 +88,12 @@ async function main(configPath = 'wrangler.jsonc') {
     throw new Error('D1 schema file does not create the expected my_budget_pc_state table.');
   }
 
+  const preview = process.argv.includes('--preview');
   const errors = validateCloudflareLaunch(
     config,
     process.env.VITE_SITE_URL?.trim(),
     process.env.VITE_DEMO_CATALOG,
+    preview,
   );
   if (errors.length) {
     console.error('Cloudflare deployment preflight failed:');
@@ -94,10 +102,13 @@ async function main(configPath = 'wrangler.jsonc') {
     return;
   }
 
-  console.info('Cloudflare static deployment preflight passed.');
+  console.info(preview
+    ? 'Temporary workers.dev preview preflight passed; VITE_SITE_URL and sitemap generation are optional.'
+    : 'Cloudflare static deployment preflight passed.');
   console.info('Still verify the remote D1 schema, Worker secrets, domain routing, backups, and production data suitability before launch.');
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  await main(process.argv[2] || 'wrangler.jsonc');
+  const configPath = process.argv.slice(2).find((argument) => !argument.startsWith('--')) || 'wrangler.jsonc';
+  await main(configPath);
 }
