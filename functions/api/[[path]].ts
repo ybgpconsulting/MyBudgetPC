@@ -1,6 +1,7 @@
 import { SEED_PHONES } from '../../src/data/seedPhones';
 import type { ApiInventoryUnit, ApiProduct, ApiReservation, ApiSale } from '../../src/types';
 import type { PhoneItem } from '../../src/types';
+import { createInventoryUnitSchema } from '../../server/schemas';
 
 interface D1Result<T = unknown> {
   results?: T[];
@@ -226,7 +227,7 @@ function normalizeProduct(input: Record<string, unknown>, old?: ApiProduct): Api
     inBox: (input.inBox as ApiProduct['inBox']) || old?.inBox || {},
     keyFeatures: Array.isArray(input.keyFeatures) ? input.keyFeatures as string[] : old?.keyFeatures || [],
     images,
-    units: [{ ...unit, salePriceInr: Number(input.priceInr ?? old?.priceInr ?? unit.salePriceInr ?? 0), updatedAt: now }],
+    units: old?.units.length ? old.units : [unit],
     dateAdded: old?.dateAdded || now.slice(0, 10),
     createdAt: old?.createdAt || now,
     updatedAt: now,
@@ -234,7 +235,6 @@ function normalizeProduct(input: Record<string, unknown>, old?: ApiProduct): Api
 }
 
 function productMatches(product: ApiProduct, query: URLSearchParams) {
-  const unit = product.units[0];
   const search = query.get('search')?.toLowerCase();
   return (!query.has('category') || product.category === query.get('category'))
     && (!query.has('brand') || product.brand === query.get('brand'))
@@ -245,7 +245,7 @@ function productMatches(product: ApiProduct, query: URLSearchParams) {
     && (!query.has('minBatteryHealth') || (product.batteryHealth || 0) >= Number(query.get('minBatteryHealth')))
     && (!query.has('featured') || product.featured === (query.get('featured') === 'true'))
     && (!query.has('priceDrop') || product.priceDrop === (query.get('priceDrop') === 'true'))
-    && (query.get('availableOnly') !== 'true' || unit?.status === 'available')
+    && (query.get('availableOnly') !== 'true' || product.units.some(unit => unit.status === 'available'))
     && (!search || [product.brand, product.model, product.stockTag, product.colour].some(value => value.toLowerCase().includes(search)));
 }
 
@@ -285,7 +285,7 @@ function serializePublicProduct(product: ApiProduct) {
 
 export async function onRequest(context: { request: Request; env: Env }): Promise<Response> {
   const { request, env } = context;
-  if (!env.DB) return json({ error: 'Cloudflare D1 database is not configured. Bind a new store database as DB.' }, 503);
+  if (!env.DB) return json({ error: 'Cloudflare D1 database is not configured. Configure the DB binding for this Worker.' }, 503);
   const url = new URL(request.url);
   const path = url.pathname.replace(/^\/api/, '').replace(/\/+$/, '') || '/';
   const method = request.method.toUpperCase();
@@ -442,6 +442,41 @@ export async function onRequest(context: { request: Request; env: Env }): Promis
           ...unit, brand: product.brand, model: product.model, storage: product.storage,
           colour: product.colour, priceInr: product.priceInr, productStockTag: product.stockTag,
         }))));
+    }
+
+    if (path === '/inventory' && method === 'POST') {
+      const denied = requireAdmin();
+      if (denied) return denied;
+      const result = createInventoryUnitSchema.safeParse(await request.json());
+      if (!result.success) {
+        return json({ error: 'Validation failed', details: result.error.flatten().fieldErrors }, 400);
+      }
+      const body = result.data;
+      const data = await load();
+      const product = data.products.find(item => item.id === body.productId);
+      if (!product) return json({ error: 'Product not found.' }, 404);
+      if (data.products.some(item => item.units.some(unit => unit.stockTag === body.stockTag))) {
+        return json({ error: 'Stock tag already exists.' }, 409);
+      }
+      const now = isoNow();
+      const unit: ApiInventoryUnit = {
+        id: uuid(),
+        productId: product.id,
+        stockTag: body.stockTag,
+        ...(body.imei ? { imei: body.imei } : {}),
+        status: 'available',
+        salePriceInr: body.salePriceInr ?? null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      product.units.push(unit);
+      const conflict = await persist();
+      return conflict || json({
+        id: unit.id,
+        productId: unit.productId,
+        stockTag: unit.stockTag,
+        status: unit.status,
+      }, 201);
     }
 
     const inventoryStatus = path.match(/^\/inventory\/([^/]+)\/status$/);
@@ -655,7 +690,14 @@ export async function onRequest(context: { request: Request; env: Env }): Promis
 
     return json({ error: 'Not found.' }, 404);
   } catch (error) {
-    console.error('Cloudflare API error:', error);
+    const isD1Error = error instanceof Error
+      && /D1_ERROR|SQLITE_ERROR|no such table|database is locked/i.test(error.message);
+    console.error('Cloudflare API error:', isD1Error ? 'D1 operation failed.' : error);
+    if (isD1Error) {
+      return json({
+        error: 'Cloudflare D1 is unavailable or its schema is not initialized. Verify the DB binding and my_budget_pc_state table.',
+      }, 503);
+    }
     return json({ error: 'Store API request failed. Please retry.' }, 500);
   }
 }

@@ -5,7 +5,7 @@
 - React and TypeScript storefront: catalogue, category/search/price filters, product details, persisted enquiry cart, customer review form, and WhatsApp message generation.
 - Existing inventory context and API contracts: product CRUD, image records, availability units, staff authentication, reservations, and internal sales records.
 - Express/PostgreSQL backend: self-hosted application backend with password hashing, signed sessions, database migrations, and staff account bootstrap from environment settings.
-- Cloudflare Worker/Pages API adapter: optional D1-backed catalog and staff API; R2 can be bound for durable product uploads.
+- Cloudflare Worker/Pages API adapter: optional D1-backed catalog and staff API; R2 may serve verified existing images. Cloudflare uploads remain disabled.
 
 ## Product and stock model
 
@@ -27,4 +27,4 @@ The Express/PostgreSQL path retains the existing role checks and password hashin
 
 Product uploads continue to use the existing protected `/api/uploads/image` contract. Cloudflare R2 is optional and must be provisioned independently; a missing bucket or database is surfaced as an API error rather than reusing another store's bindings. Both the Worker static assets and Pages configuration support SPA route fallback for product details and staff login.
 
-No D1 database identifier is checked into Wrangler configuration. Provision a separate D1 database and bind it as `DB` before deploying the Pages API. The current Cloudflare D1 adapter stores state as one JSON record for compatibility; it is not suitable as a high-volume production data model and should be normalized before substantial customer or sales data is stored.
+The active `npm run deploy` path is the Workers Assets deployment configured by `wrangler.jsonc`. Its `DB` binding targets the verified My Budget PC D1 database, and the D1 state table has been initialized. A temporary workers.dev preview is deployed at `https://mybudgetpc.sjmybudget-info.workers.dev`; it currently has no staff secrets, so staff login returns HTTP 503. It is not a production launch. Deployment preflight checks local configuration, but does not verify remote secrets, database schema, domain routing, backups, or account selection. The separate Pages configuration is used only by `deploy:pages`. If the D1 table exists but its state row does not, the adapter initializes an empty catalogue; `SEED_PHONES` is empty. The current Cloudflare D1 adapter stores state as one JSON record for compatibility; it is not suitable for real inventory, customer records, reservations, or sales and must be replaced with a tested normalized model before accepting business data.

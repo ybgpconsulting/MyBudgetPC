@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { PhoneItem, FilterOptions, ProductCategory, ApiProduct } from '../types';
 import { api } from '../api/client';
 import { fetchAllCatalogProducts, CatalogPage } from '../utils/catalogPagination';
+import { buildStorePath, categoryFromSlug, parseStoreRoute, slugifyCategory } from '../utils/storeRoutes';
 import { useAuth } from './AuthContext';
 
 interface InventoryContextType {
@@ -12,7 +13,7 @@ interface InventoryContextType {
   selectedPhone: PhoneItem | null;
   setSelectedPhone: (phone: PhoneItem | null) => void;
   activeView: string;
-  setActiveView: (view: string, phoneId?: string) => void;
+  setActiveView: (view: string, phoneId?: string, category?: string) => void;
   activeDetailId: string | null;
   filters: FilterOptions;
   setFilters: React.Dispatch<React.SetStateAction<FilterOptions>>;
@@ -214,42 +215,22 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   useEffect(() => {
     const syncRoute = () => {
-      const path = window.location.pathname.replace(/^\/+|\/+$/g, '');
-      const hash = window.location.hash.replace(/^#\/?/, '');
-      const route = path || hash;
-      const detailId = route.startsWith('product/')
-        ? route.slice('product/'.length)
-        : route.startsWith('stock/')
-          ? route.slice('stock/'.length)
-          : null;
-
-      if (detailId) {
+      const routePath = window.location.pathname === '/' && window.location.hash.startsWith('#/')
+        ? window.location.hash.slice(1)
+        : window.location.pathname;
+      const route = parseStoreRoute(routePath);
+      if (route.view === 'detail' && route.productId) {
         setActiveViewState('detail');
-        setActiveDetailId(decodeURIComponent(detailId));
+        setActiveDetailId(route.productId);
         return;
       }
 
-      const routeViews: Record<string, string> = {
-        '': 'home',
-        home: 'home',
-        catalog: 'stock',
-        stock: 'stock',
-        accessories: 'stock',
-        checkout: 'checkout',
-        cart: 'checkout',
-        login: 'login',
-        admin: 'login',
-        sales: 'login',
-        about: 'home',
-        policies: 'home',
-        contact: 'home',
-      };
-      setActiveViewState(routeViews[route] || 'home');
+      setActiveViewState(route.view);
       setActiveDetailId(null);
-      if (route === 'accessories') setFilters(previous => ({ ...previous, category: 'Accessories' }));
-      if (route === 'about' || route === 'policies' || route === 'contact') {
-        setActiveViewState('home');
-      }
+      const category = route.categorySlug
+        ? phones.find(phone => slugifyCategory(phone.category) === route.categorySlug)?.category || categoryFromSlug(route.categorySlug)
+        : 'All';
+      if (route.view === 'stock') setFilters(previous => ({ ...previous, category }));
     };
 
     syncRoute();
@@ -259,31 +240,20 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       window.removeEventListener('popstate', syncRoute);
       window.removeEventListener('hashchange', syncRoute);
     };
-  }, []);
+  }, [phones]);
 
-  const setActiveView = (view: string, phoneId?: string) => {
+  const setActiveView = (view: string, phoneId?: string, category?: string) => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     if (view === 'detail' && phoneId) {
       setActiveViewState('detail');
       setActiveDetailId(phoneId);
       const match = phones.find(p => p.id === phoneId);
       if (match) setSelectedPhone(match);
-      window.history.pushState(null, '', `/product/${encodeURIComponent(phoneId)}`);
+      window.history.pushState(null, '', buildStorePath(view, phoneId));
     } else {
       setActiveViewState(view);
       setActiveDetailId(null);
-      const routes: Record<string, string> = {
-        home: '/',
-        stock: '/catalog',
-        accessories: '/catalog',
-        checkout: '/checkout',
-        cart: '/checkout',
-        login: '/login',
-        education: '/about',
-        safety: '/policies',
-        contact: '/contact',
-      };
-      window.history.pushState(null, '', routes[view] || `/${view}`);
+      window.history.pushState(null, '', buildStorePath(view, undefined, category));
     }
     window.dispatchEvent(new PopStateEvent('popstate'));
   };

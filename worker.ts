@@ -7,11 +7,18 @@ interface WorkerEnvironment extends ApiEnvironment {
 }
 
 export default {
-  fetch(request: Request, env: WorkerEnvironment): Promise<Response> {
+  async fetch(request: Request, env: WorkerEnvironment): Promise<Response> {
     const { pathname } = new URL(request.url);
     if (pathname === '/api' || pathname.startsWith('/api/')) {
       return onRequest({ request, env });
     }
-    return env.ASSETS.fetch(request);
+    const response = await env.ASSETS.fetch(request);
+    const isFilePath = /\.[^/]+$/.test(pathname);
+    const isHtmlDocumentPath = /\.html?$/i.test(pathname);
+    if (response.status === 200 && isFilePath && !isHtmlDocumentPath
+      && response.headers.get('content-type')?.startsWith('text/html')) {
+      return new Response(null, { status: 404 });
+    }
+    return response;
   },
 };

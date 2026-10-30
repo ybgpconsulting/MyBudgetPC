@@ -4,10 +4,17 @@
 	"main": "worker.ts",
 	"compatibility_date": "2026-09-30",
 	"workers_dev": true,
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "mybudgetpc",
+			"database_id": "1cfcf946-38d6-4f05-be53-7bf1e5abd61f"
+		}
+	],
 	"assets": {
 		"directory": "./dist",
 		"binding": "ASSETS",
-		"run_worker_first": ["/api", "/api/*"],
+		"run_worker_first": ["/api", "/api/*", "/*.*"],
 		"not_found_handling": "single-page-application"
 	}
 }

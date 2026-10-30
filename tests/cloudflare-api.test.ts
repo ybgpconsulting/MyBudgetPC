@@ -5,14 +5,20 @@ import { onRequest } from '../functions/api/[[path]]';
 class MemoryD1 {
   private row: { revision: number; value: string } | null = null;
 
+  constructor(private readonly queryError?: (query: string) => Error | undefined) {}
+
   prepare(query: string) {
     const createStatement = (values: unknown[] = []) => ({
       bind: (...bound: unknown[]) => createStatement(bound),
       first: async <T,>() => {
+        const error = this.queryError?.(query);
+        if (error) throw error;
         if (query.includes('SELECT 1')) return { ok: 1 } as T;
         return this.row as T | null;
       },
       run: async <T,>() => {
+        const error = this.queryError?.(query);
+        if (error) throw error;
         if (query.startsWith('INSERT OR IGNORE') && !this.row) {
           this.row = { revision: 0, value: String(values[0]) };
           return { success: true, meta: { changes: 1 } };
@@ -96,9 +102,22 @@ test('Pages API rejects invalid optional tokens and protects inventory-unit deta
   assert.equal(createResponse.status, 201);
   const created = await createResponse.json() as { id: string };
 
-  const publicList = await call(db, '/api/products');
-  const publicCatalog = await publicList.json() as { products: Array<{ units: Array<Record<string, unknown>> }> };
+  const publicList = await call(db, '/api/products?page=1&limit=1');
+  assert.equal(publicList.status, 200);
+  const publicCatalog = await publicList.json() as {
+    products: Array<{ units: Array<Record<string, unknown>> }>;
+    total: number;
+    page: number;
+    limit: number;
+    pages: number;
+  };
+  assert.equal(publicCatalog.total, 1);
+  assert.equal(publicCatalog.page, 1);
+  assert.equal(publicCatalog.limit, 1);
+  assert.equal(publicCatalog.pages, 1);
   assert.deepEqual(publicCatalog.products[0].units, [{ status: 'available', salePriceInr: 50000 }]);
+  assert.equal('id' in publicCatalog.products[0].units[0], false);
+  assert.equal('stockTag' in publicCatalog.products[0].units[0], false);
 
   const publicDetail = await call(db, `/api/products/${created.id}`);
   const publicProduct = await publicDetail.json() as { units: Array<Record<string, unknown>> };
@@ -158,12 +177,114 @@ test('Cloudflare image uploads fail closed for unauthorized and unprocessable fi
   assert.equal(storedObjects, 0);
 });
 
+test('Pages API preserves inventory units on product updates and filters any available unit', async () => {
+  const db = new MemoryD1();
+  const adminLoginResponse = await call(db, '/api/auth/login', 'POST', {
+    email: authConfig.MBPC_ADMIN_EMAIL,
+    password: authConfig.MBPC_ADMIN_PASSWORD,
+  }, undefined, authConfig);
+  const adminLogin = await adminLoginResponse.json() as { token: string };
+  const productResponse = await call(db, '/api/products', 'POST', {
+    category: 'Laptops',
+    brand: 'Example',
+    model: 'Multi-unit-test',
+    priceInr: 50000,
+    images: [],
+  }, adminLogin.token, authConfig);
+  const product = await productResponse.json() as { id: string; units: Array<{ id: string }> };
+  const firstUnitId = product.units[0].id;
+
+  const soldResponse = await call(db, `/api/inventory/${firstUnitId}/status`, 'PATCH', {
+    status: 'sold',
+  }, adminLogin.token, authConfig);
+  assert.equal(soldResponse.status, 200);
+
+  const inventoryResponse = await call(db, '/api/inventory', 'POST', {
+    productId: product.id,
+    stockTag: 'EXAMPLE-MULTI-UNIT-2',
+    imei: '123456789012345',
+    salePriceInr: 0,
+  }, adminLogin.token, authConfig);
+  assert.equal(inventoryResponse.status, 201);
+  const createdUnit = await inventoryResponse.json() as {
+    id: string;
+    productId: string;
+    stockTag: string;
+    status: string;
+  };
+  assert.equal(createdUnit.productId, product.id);
+  assert.equal(createdUnit.stockTag, 'EXAMPLE-MULTI-UNIT-2');
+  assert.equal(createdUnit.status, 'available');
+
+  const duplicateStockTag = await call(db, '/api/inventory', 'POST', {
+    productId: product.id,
+    stockTag: 'EXAMPLE-MULTI-UNIT-2',
+  }, adminLogin.token, authConfig);
+  assert.equal(duplicateStockTag.status, 409);
+
+  const invalidInventory = await call(db, '/api/inventory', 'POST', {
+    productId: product.id,
+    stockTag: '',
+    salePriceInr: -1,
+  }, adminLogin.token, authConfig);
+  assert.equal(invalidInventory.status, 400);
+
+  const salesLoginResponse = await call(db, '/api/auth/login', 'POST', {
+    email: authConfig.MBPC_SALES_EMAIL,
+    password: authConfig.MBPC_SALES_PASSWORD,
+  }, undefined, authConfig);
+  const salesLogin = await salesLoginResponse.json() as { token: string };
+  const salesCreateAttempt = await call(db, '/api/inventory', 'POST', {
+    productId: product.id,
+    stockTag: 'EXAMPLE-MULTI-UNIT-3',
+  }, salesLogin.token, authConfig);
+  assert.equal(salesCreateAttempt.status, 403);
+
+  const updateResponse = await call(db, `/api/products/${product.id}`, 'PATCH', {
+    model: 'Updated multi-unit test',
+    priceInr: 52000,
+  }, adminLogin.token, authConfig);
+  assert.equal(updateResponse.status, 200);
+
+  const unitsResponse = await call(db, `/api/products/${product.id}/inventory`, 'GET', undefined, adminLogin.token, authConfig);
+  const units = await unitsResponse.json() as Array<{
+    id: string;
+    status: string;
+    stockTag: string;
+    imei?: string;
+    salePriceInr: number | null;
+  }>;
+  assert.equal(unitsResponse.status, 200);
+  assert.deepEqual(units.map(unit => unit.id), [firstUnitId, createdUnit.id]);
+  assert.equal(units[0].status, 'sold');
+  assert.equal(units[1].status, 'available');
+  assert.equal(units[1].stockTag, 'EXAMPLE-MULTI-UNIT-2');
+  assert.equal(units[1].imei, '123456789012345');
+  assert.equal(units[1].salePriceInr, 0);
+
+  const availableProductsResponse = await call(db, '/api/products?availableOnly=true');
+  const availableProducts = await availableProductsResponse.json() as {
+    products: Array<{ id: string }>;
+  };
+  assert.ok(availableProducts.products.some(item => item.id === product.id));
+});
+
 test('Pages API starts with an empty My Budget PC catalogue', async () => {
   const db = new MemoryD1();
-  const response = await call(db, '/api/products');
+  const response = await call(db, '/api/products?page=1&limit=1');
   assert.equal(response.status, 200);
-  const catalog = await response.json() as { products: unknown[]; total: number };
+  const catalog = await response.json() as {
+    products: unknown[];
+    total: number;
+    page: number;
+    limit: number;
+    pages: number;
+  };
+  assert.deepEqual(catalog.products, []);
   assert.equal(catalog.total, 0);
+  assert.equal(catalog.page, 1);
+  assert.equal(catalog.limit, 1);
+  assert.equal(catalog.pages, 0);
   assert.deepEqual(catalog.products, []);
 });
 
@@ -302,5 +423,128 @@ test('Pages API reports when its independent D1 binding is missing', async () =>
     request: makeRequest('/api/health'),
     env: {},
   });
+  assert.match(response.headers.get('content-type') || '', /^application\/json/);
   assert.equal(response.status, 503);
+  const body = await response.json() as { error: string };
+  assert.match(body.error, /D1 database is not configured/);
+});
+
+test('Pages API returns HTTP 503 for catalogue requests when DB binding is missing', async () => {
+  const response = await onRequest({
+    request: makeRequest('/api/products?page=1&limit=1'),
+    env: {},
+  });
+  assert.match(response.headers.get('content-type') || '', /^application\/json/);
+  assert.equal(response.status, 503);
+  const body = await response.json() as { error: string };
+  assert.match(body.error, /Cloudflare D1 database is not configured/);
+});
+
+test('Pages API returns valid JSON and pagination metadata across pages', async () => {
+  const db = new MemoryD1();
+  const loginResponse = await call(db, '/api/auth/login', 'POST', {
+    email: authConfig.MBPC_ADMIN_EMAIL,
+    password: authConfig.MBPC_ADMIN_PASSWORD,
+  }, undefined, authConfig);
+  const login = await loginResponse.json() as { token: string };
+
+  for (const index of [1, 2, 3]) {
+    await call(db, '/api/products', 'POST', {
+      category: 'Desktops',
+      brand: `Brand-${index}`,
+      model: `PC-Model-${index}`,
+      storage: '1TB NVMe',
+      colour: 'Black',
+      priceInr: 30000 + index * 5000,
+      conditionGrade: 'A',
+      conditionDescription: `Unit ${index}`,
+      images: [],
+      units: [],
+    }, login.token, authConfig);
+  }
+
+  const page1Response = await call(db, '/api/products?page=1&limit=2');
+  assert.equal(page1Response.status, 200);
+  assert.match(page1Response.headers.get('content-type') || '', /^application\/json/);
+  const page1 = await page1Response.json() as {
+    products: Array<{ brand: string; units: Array<Record<string, unknown>> }>;
+    total: number;
+    page: number;
+    limit: number;
+    pages: number;
+  };
+  assert.equal(page1.total, 3);
+  assert.equal(page1.page, 1);
+  assert.equal(page1.limit, 2);
+  assert.equal(page1.pages, 2);
+  assert.equal(page1.products.length, 2);
+
+  // Verify public serialization does not expose staff-only unit details
+  for (const prod of page1.products) {
+    for (const unit of prod.units) {
+      assert.equal('id' in unit, false, 'unit id must not be exposed');
+      assert.equal('stockTag' in unit, false, 'stockTag must not be exposed');
+      assert.equal('productId' in unit, false, 'productId must not be exposed');
+      assert.equal('createdAt' in unit, false, 'createdAt must not be exposed');
+      assert.equal('updatedAt' in unit, false, 'updatedAt must not be exposed');
+    }
+  }
+
+  const page2Response = await call(db, '/api/products?page=2&limit=2');
+  assert.equal(page2Response.status, 200);
+  const page2 = await page2Response.json() as {
+    products: Array<{ brand: string }>;
+    total: number;
+    page: number;
+    limit: number;
+    pages: number;
+  };
+  assert.equal(page2.total, 3);
+  assert.equal(page2.page, 2);
+  assert.equal(page2.limit, 2);
+  assert.equal(page2.pages, 2);
+  assert.equal(page2.products.length, 1);
+});
+
+test('Pages API health verifies connectivity through a configured D1 binding', async () => {
+  const response = await call(new MemoryD1(), '/api/health');
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    status: 'ok',
+    mode: 'd1',
+    database: 'connected',
+    imageStorage: 'disabled',
+  });
+});
+
+test('Pages API reports missing D1 tables without exposing database errors', async () => {
+  const privateError = 'D1_ERROR: no such table: my_budget_pc_state; secret=must-not-leak';
+  const db = new MemoryD1((query) => query.includes('my_budget_pc_state')
+    ? new Error(privateError)
+    : undefined);
+
+  const response = await call(db, '/api/products');
+  const body = await response.json() as { error: string };
+
+  assert.equal(response.status, 503);
+  assert.match(body.error, /schema is not initialized/);
+  assert.match(body.error, /my_budget_pc_state/);
+  assert.equal(JSON.stringify(body).includes('must-not-leak'), false);
+  assert.equal(JSON.stringify(body).includes(privateError), false);
+});
+
+test('Pages API reports D1 SQL failures without exposing database errors', async () => {
+  const privateError = 'D1_ERROR: SELECT failed; secret=must-not-leak';
+  const db = new MemoryD1((query) => query.includes('SELECT revision')
+    ? new Error(privateError)
+    : undefined);
+
+  const response = await call(db, '/api/products');
+  const body = await response.json() as { error: string };
+
+  assert.equal(response.status, 503);
+  assert.match(body.error, /D1 is unavailable/);
+  assert.equal(JSON.stringify(body).includes('must-not-leak'), false);
+  assert.equal(JSON.stringify(body).includes(privateError), false);
 });

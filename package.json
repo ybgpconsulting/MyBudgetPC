@@ -3,11 +3,18 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build && node scripts/generate-sitemap.mjs",
-    "deploy": "npm run build && npx wrangler deploy",
-    "deploy:pages": "npm run build && npx wrangler pages deploy dist --project-name my-budget-pc --config wrangler.pages.jsonc",
+    "cloudflare:preflight": "node scripts/cloudflare-preflight.mjs",
+    "cloudflare:preview-preflight": "node scripts/cloudflare-preflight.mjs wrangler.jsonc --preview",
+    "cloudflare:dry-run": "npm run cloudflare:preflight && npm run build && wrangler deploy --dry-run",
+    "deploy": "npm run cloudflare:preflight && npm run build && wrangler deploy",
+    "deploy:preview": "npm run cloudflare:preview-preflight && npm run build && wrangler deploy",
+    "deploy:pages": "npm run cloudflare:preflight -- wrangler.pages.jsonc && npm run build && wrangler pages deploy dist --project-name my-budget-pc --config wrangler.pages.jsonc",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
@@ -49,6 +56,7 @@
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
-    "vite": "^6.2.3"
+    "vite": "^6.2.3",
+    "wrangler": "4.156.0"
   }
 }
